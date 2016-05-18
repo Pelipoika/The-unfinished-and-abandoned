@@ -7,7 +7,15 @@
 
 #pragma newdecls required
 
-#define DAMAGE_TO_DEAL 100
+#define DMG_SCOUT    100
+#define DMG_SOLDIER  100
+#define DMG_PYRO     100
+#define DMG_DEMO     100
+#define DMG_HEAVY    100
+#define DMG_ENGINEER 100
+#define DMG_MEDIC    100
+#define DMG_SNIPER   100
+#define DMG_SPY      100
 
 char g_strClassName[][] = {"", "scout", "sniper", "soldier", "demoman", "medic", "heavy", "pyro", "spy", "engineer"};
 char g_strSoundRobotFallDamage[][] = {"mvm/mvm_fallpain01.wav", "mvm/mvm_fallpain02.wav"};
@@ -74,6 +82,9 @@ public void OnMapStart()
 	PrecacheSound("replay/exitperformancemode.wav");
 	PrecacheSound("weapons/medi_shield_deploy.wav");
 	PrecacheSound("misc/halloween_eyeball/vortex_eyeball_moved.wav");
+	PrecacheSound("weapons/airstrike_fire_01.wav");
+	PrecacheSound("weapons/airstrike_fire_02.wav");
+	PrecacheSound("weapons/airstrike_fire_03.wav");
 	
 	for(int i = 0; i < sizeof(g_strSoundRobotFootsteps); i++)	PrecacheSound(g_strSoundRobotFootsteps[i]);
 	for(int i = 0; i < sizeof(g_strSoundRobotFallDamage); i++)	PrecacheSound(g_strSoundRobotFallDamage[i]);
@@ -84,14 +95,39 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 	char strCmd[256];
 	kv.GetSectionName(strCmd, 256);
 	
-	if(StrEqual(strCmd, "+use_action_slot_item_server") 
-	&& client > 0 && client <= MaxClients && IsClientInGame(client) && IsPlayerAlive(client) 
-	&& g_iDamageDone[client] >= DAMAGE_TO_DEAL && !g_bAbilityActive[client])
+	int iDmg;
+	switch(TF2_GetPlayerClass(client))
+	{
+		case TFClass_Scout:		iDmg = DMG_SCOUT;
+		case TFClass_Soldier:	iDmg = DMG_SOLDIER;
+		case TFClass_Pyro:		iDmg = DMG_PYRO;
+		case TFClass_DemoMan:	iDmg = DMG_DEMO;
+		case TFClass_Heavy:		iDmg = DMG_HEAVY;
+		case TFClass_Engineer:	iDmg = DMG_ENGINEER;
+		case TFClass_Medic:		iDmg = DMG_MEDIC;
+		case TFClass_Sniper:	iDmg = DMG_SNIPER;
+		case TFClass_Spy:		iDmg = DMG_SPY;
+	}
+	
+	if(StrEqual(strCmd, "+use_action_slot_item_server") && client > 0 && client <= MaxClients && IsClientInGame(client) && IsPlayerAlive(client) && g_iDamageDone[client] >= iDmg && !g_bAbilityActive[client])
 	{
 		MeleeDare(client);
 
 		switch(TF2_GetPlayerClass(client))
 		{
+			case TFClass_Soldier:
+			{
+				if(!(GetEntityFlags(client) & FL_ONGROUND))
+				{
+					g_iDamageDone[client] = 0;
+					g_flAbilityTime[client] = GetGameTime() + 3.0;
+					g_bAbilityActive[client] = true;
+					
+					FireRocket(client);
+					
+					SetEntityMoveType(client, MOVETYPE_NONE);
+				}
+			}
 			case TFClass_DemoMan:
 			{
 				float flStartPos[3], flEyeAng[3], flForw[3];
@@ -115,6 +151,8 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 				ScaleVector(flResult, 1000.0);
 			
 				g_iDamageDone[client] = 0;
+				g_flAbilityTime[client] = GetGameTime() + 10.0;
+				g_bAbilityActive[client] = true;
 				
 				int bomb = CreateEntityByName("tf_projectile_pipe_remote");	
 				DispatchKeyValueVector(bomb, "origin", flStartPos);
@@ -224,7 +262,7 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 			}
 			case TFClass_Spy:
 			{
-				g_iDamageDone[client] = (DAMAGE_TO_DEAL / 2);
+				g_iDamageDone[client] = (iDmg / 2);
 				g_flAbilityTime[client] = GetGameTime() + 20.0;
 				g_bAbilityActive[client] = true;
 				
@@ -302,8 +340,22 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 {
 	if(buttons & IN_SCORE || IsFakeClient(client))
 		return Plugin_Continue;	
-
-	float flPercentage = g_iDamageDone[client] / float(DAMAGE_TO_DEAL) * 100;
+	
+	int iDmg;
+	switch(TF2_GetPlayerClass(client))
+	{
+		case TFClass_Scout:		iDmg = DMG_SCOUT;
+		case TFClass_Soldier:	iDmg = DMG_SOLDIER;
+		case TFClass_Pyro:		iDmg = DMG_PYRO;
+		case TFClass_DemoMan:	iDmg = DMG_DEMO;
+		case TFClass_Heavy:		iDmg = DMG_HEAVY;
+		case TFClass_Engineer:	iDmg = DMG_ENGINEER;
+		case TFClass_Medic:		iDmg = DMG_MEDIC;
+		case TFClass_Sniper:	iDmg = DMG_SNIPER;
+		case TFClass_Spy:		iDmg = DMG_SPY;
+	}
+	
+	float flPercentage = g_iDamageDone[client] / float(iDmg) * 100;
 		
 	if(flPercentage > 100.0) 
 		flPercentage = 100.0;
@@ -361,37 +413,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		}
 		else	//Ability ended, remove ability things
 		{
-			switch(TF2_GetPlayerClass(client))
-			{
-				case TFClass_Engineer:
-				{
-					SetVariantString("");
-					AcceptEntityInput(client, "SetCustomModel");
-					
-					StopSound(client, SNDCHAN_AUTO, ENGINE_LOOP);
-					
-					int iPrimary = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary);
-					TF2Attrib_SetByName(iPrimary, "fire rate bonus", 1.0);
-					
-					int iSecondary = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary);
-					TF2Attrib_SetByName(iSecondary, "fire rate bonus", 1.0);
-					
-					int iMelee = GetPlayerWeaponSlot(client, TFWeaponSlot_Melee);
-					TF2Attrib_SetByName(iMelee, "melee attack rate bonus", 1.0);
-					TF2Attrib_SetByName(iMelee, "Construction rate increased", 1.0);
-				}
-				case TFClass_Spy:
-				{
-					TF2_SetFOV(client, GetEntProp(client, Prop_Send, "m_iDefaultFOV"), 1.0, 0);
-					
-					EmitSoundToClient(client, "replay/cameracontrolmodeexited.wav");
-					Overlay(client, "\"\"");
-					
-					EmitSoundToAll("replay/exitperformancemode.wav", client);
-				}
-			}
-			
-			g_bAbilityActive[client] = false;
+			EndAbilities(client);
 		}
 	}
 	else
@@ -408,7 +430,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				case TFClass_DemoMan:	Format(strProgressBar, sizeof(strProgressBar), "GRAVITON SURGE");	//TODO: launches a gravity bomb that draws in enemy combatants and deals damage while they’re trapped.
 				case TFClass_Spy:		Format(strProgressBar, sizeof(strProgressBar), "DEADEYE");			//TODO: shoots every enemy in his line of sight. The weaker his targets are, the faster he’ll line up a killshot.
 				case TFClass_Sniper:	Format(strProgressBar, sizeof(strProgressBar), "INFRA-SIGHT");		//TODO: see targets through walls and objects for a moderate amount of time. This enhanced vision is shared with allies.
-				case TFClass_Soldier:	Format(strProgressBar, sizeof(strProgressBar), "BARRAGE");			//TODO: directs a continuous salvo of mini-rockets to destroy groups of enemies.
+				case TFClass_Soldier:	Format(strProgressBar, sizeof(strProgressBar), "BARRAGE");
 				default:				Format(strProgressBar, sizeof(strProgressBar), "Not implemented");
 			}
 			
@@ -425,6 +447,50 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	}
 	
 	return Plugin_Continue;	
+}
+
+void EndAbilities(int client)
+{
+	switch(TF2_GetPlayerClass(client))
+	{
+		case TFClass_Engineer:
+		{
+			SetVariantString("");
+			AcceptEntityInput(client, "SetCustomModel");
+			
+			StopSound(client, SNDCHAN_AUTO, ENGINE_LOOP);
+			
+			int iPrimary = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary);
+			TF2Attrib_SetByName(iPrimary, "fire rate bonus", 1.0);
+			
+			int iSecondary = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary);
+			TF2Attrib_SetByName(iSecondary, "fire rate bonus", 1.0);
+			
+			int iMelee = GetPlayerWeaponSlot(client, TFWeaponSlot_Melee);
+			TF2Attrib_SetByName(iMelee, "melee attack rate bonus", 1.0);
+			TF2Attrib_SetByName(iMelee, "Construction rate increased", 1.0);
+		}
+		case TFClass_Spy:
+		{
+			TF2_SetFOV(client, GetEntProp(client, Prop_Send, "m_iDefaultFOV"), 1.0, 0);
+			
+			EmitSoundToClient(client, "replay/cameracontrolmodeexited.wav");
+			Overlay(client, "\"\"");
+			
+			EmitSoundToAll("replay/exitperformancemode.wav", client);
+		}
+		case TFClass_Soldier:
+		{
+			int index = -1;
+			while ((index = FindEntityByClassname(index, "tf_point_weapon_mimic")) != -1)
+				if (GetEntPropEnt(index, Prop_Send, "m_hOwnerEntity") == client)
+					AcceptEntityInput(index, "Kill");
+		
+			SetEntityMoveType(client, MOVETYPE_WALK);
+		}
+	}
+
+	g_bAbilityActive[client] = false;
 }
 
 public Action TF2_CalcIsAttackCritical(int client, int weapon, char[] weaponname, bool &result)
@@ -602,6 +668,8 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
 	{
 		GetClientAbsOrigin(client, flDeathPos[client]);
 		GetClientEyeAngles(client, flDeathAng[client]);
+		
+		EndAbilities(client);
 	}
 }
 
@@ -618,6 +686,84 @@ public void Event_PlayerHurt(Event event, const char[] name, bool dontBroadcast)
 		
 	//	PrintCenterText(iAttacker, "iVictim %N\niHealth %i\niAttacker %N\niDamageAmount %i\nTotal Damage Done: %i", iVictim, iHealth, iAttacker, iDamageAmount, g_iDamageDone[iAttacker]);
 	}
+}
+
+int CreateLauncher(int client, float flPos[3], float flAng[3])
+{
+	int ent = CreateEntityByName("tf_point_weapon_mimic");
+	DispatchKeyValueVector(ent, "origin", flPos);
+	DispatchKeyValueVector(ent, "angles", flAng);
+	DispatchKeyValue(ent, "ModelOverride", "models/weapons/w_models/w_rocket_airstrike/w_rocket_airstrike.mdl");
+	DispatchKeyValue(ent, "WeaponType", "0");
+	DispatchKeyValue(ent, "SpeedMin", "600");
+	DispatchKeyValue(ent, "SpeedMax", "1100");
+	DispatchKeyValue(ent, "Damage", "50");
+	DispatchKeyValue(ent, "SplashRadius", "100");
+	DispatchKeyValue(ent, "SpreadAngle", "5");
+	DispatchSpawn(ent);
+	
+	SetEntPropEnt(ent, Prop_Send, "m_hOwnerEntity", client);
+	
+	CreateTimer(0.2, Timer_FireRocket, EntIndexToEntRef(ent), TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+	
+	SetVariantString("!activator");
+	AcceptEntityInput(ent, "SetParent", client);
+	
+	SetVariantString("OnUser1 !self:ClearParent::2.95:1");
+	AcceptEntityInput(ent, "AddOutput");
+	AcceptEntityInput(ent, "FireUser1");
+	
+	SetVariantString("OnUser2 !self:Kill::3.0:1");
+	AcceptEntityInput(ent, "AddOutput");
+	AcceptEntityInput(ent, "FireUser2");
+	
+	return ent;
+}
+
+void FireRocket(int client)
+{
+	float flPos[3], flAng[3], vLeft[3];
+	GetClientEyeAngles(client, flAng);
+
+	GetClientEyePosition(client, flPos);
+	flPos[2] -= 15.0;
+	GetAngleVectors(flAng, NULL_VECTOR, vLeft, NULL_VECTOR);
+	flPos[0] += (vLeft[0] * -45);
+	flPos[1] += (vLeft[1] * -45);
+	flPos[2] += (vLeft[2] * -45);
+	CreateLauncher(client, flPos, flAng);
+	
+	GetClientEyePosition(client, flPos);
+	GetAngleVectors(flAng, NULL_VECTOR, vLeft, NULL_VECTOR);
+	flPos[0] += (vLeft[0] * 45);
+	flPos[1] += (vLeft[1] * 45);
+	flPos[2] += (vLeft[2] * 45);
+	CreateLauncher(client, flPos, flAng);
+} 
+
+public Action Timer_FireRocket(Handle timer, int iRef)
+{
+	int ent = EntRefToEntIndex(iRef);
+	if(ent != INVALID_ENT_REFERENCE)
+	{
+		int client = GetEntPropEnt(ent, Prop_Send, "m_hOwnerEntity");
+	
+		float flAng[3];
+		GetClientEyeAngles(client, flAng);
+		DispatchKeyValueVector(ent, "angles", flAng);
+		
+		switch(GetRandomInt(1, 3))
+		{
+			case 1: EmitSoundToAll("weapons/airstrike_fire_01.wav", ent);
+			case 2: EmitSoundToAll("weapons/airstrike_fire_02.wav", ent);
+			case 3: EmitSoundToAll("weapons/airstrike_fire_03.wav", ent);
+		}
+		
+		AcceptEntityInput(ent, "FireOnce");
+		return Plugin_Continue;
+	}
+	
+	return Plugin_Stop;
 }
 
 stock void CreateParticle(char[] particle, float pos[3])

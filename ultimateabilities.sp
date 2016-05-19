@@ -124,7 +124,7 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 					g_bAbilityActive[client] = true;
 					
 					FireRocket(client);
-					
+					Overlay(client, "effects/combine_binocoverlay");
 					SetEntityMoveType(client, MOVETYPE_NONE);
 				}
 			}
@@ -487,6 +487,7 @@ void EndAbilities(int client)
 					AcceptEntityInput(index, "Kill");
 		
 			SetEntityMoveType(client, MOVETYPE_WALK);
+			Overlay(client, "\"\"");
 		}
 	}
 

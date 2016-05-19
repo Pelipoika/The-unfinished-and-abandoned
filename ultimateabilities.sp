@@ -42,6 +42,8 @@ int g_iTarget[MAXPLAYERS+1];
 float g_flLockOnTime[MAXPLAYERS+1];
 bool g_bLocked[MAXPLAYERS+1];
 
+Handle g_hHudInfo;
+
 #define MODEL_ENGINEER	"models/bots/engineer/bot_engineer.mdl"
 #define MODEL_GRAVITON	"models/empty.mdl"
 #define ENGINE_LOOP		"mvm/giant_heavy/giant_heavy_loop.wav"
@@ -62,6 +64,8 @@ public void OnPluginStart()
 {
 	HookEvent("player_hurt", Event_PlayerHurt);
 	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
+	
+	g_hHudInfo = CreateHudSynchronizer();
 	
 	AddNormalSoundHook(NormalSoundHook);
 }
@@ -413,7 +417,8 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		}
 		else	//Ability ended, remove ability things
 		{
-			EndAbilities(client);
+			if(g_bAbilityActive[client])
+				EndAbilities(client);
 		}
 	}
 	else
@@ -443,7 +448,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		}
 		
 		SetHudTextParams(-1.0, 1.0, 0.1, 0, 255, 0, 0, 0, 0.0, 0.0, 0.0);
-		ShowHudText(client, -1, "%.0f%%\n%s", flPercentage, strProgressBar);
+		ShowSyncHudText(client, g_hHudInfo, "%.0f%%\n%s", flPercentage, strProgressBar);
 	}
 	
 	return Plugin_Continue;	
@@ -509,7 +514,7 @@ public Action TF2_CalcIsAttackCritical(int client, int weapon, char[] weaponname
 					
 					if(g_bLocked[client] && g_iTarget[client] != -1)
 					{
-						SDKHooks_TakeDamage(g_iTarget[client], client, client, float(GetEntProp(g_iTarget[client], Prop_Send, "m_iHealth")), DMG_BULLET|DMG_CRIT, weapon);
+						SDKHooks_TakeDamage(g_iTarget[client], client, client, 700.0, DMG_BULLET|DMG_CRIT, weapon);
 					}
 				}
 			}
@@ -670,7 +675,8 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
 		GetClientAbsOrigin(client, flDeathPos[client]);
 		GetClientEyeAngles(client, flDeathAng[client]);
 		
-		EndAbilities(client);
+		if(g_bAbilityActive[client])
+			EndAbilities(client);
 	}
 }
 

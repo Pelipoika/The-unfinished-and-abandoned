@@ -64,6 +64,11 @@ public Plugin myinfo =
 	url = "http://www.sourcemod.net/plugins.php?author=Pelipoika&search=1"
 };
 
+ArrayList g_hPositions[MAXPLAYERS + 1];
+ArrayList g_hAngles[MAXPLAYERS + 1];
+ArrayList g_hHealthPoints[MAXPLAYERS + 1];
+//int g_iPathLaserModelIndex = -1;
+
 public void OnPluginStart()
 {
 	HookEvent("player_hurt", Event_PlayerHurt);
@@ -80,12 +85,15 @@ public void OnMapStart()
 	PrecacheModel(MODEL_ENGINEER);
 	PrecacheSound(ENGINE_LOOP);
 	
+//	g_iPathLaserModelIndex = PrecacheModel("materials/sprites/laserbeam.vmt");
+	
 	PrecacheSound("misc/cp_harbor_blue_whistle.wav");
 	PrecacheSound("misc/cp_harbor_red_whistle.wav");
 	PrecacheSound("misc/halloween/duck_pickup_pos_01.wav");
 	PrecacheSound("misc/halloween/duck_pickup_neg_01.wav");
 	PrecacheSound("replay/cameracontrolmodeentered.wav");
 	PrecacheSound("replay/cameracontrolmodeexited.wav");
+	PrecacheSound("replay/rendercomplete.wav");
 	PrecacheSound("replay/enterperformancemode.wav");
 	PrecacheSound("replay/exitperformancemode.wav");
 	PrecacheSound("weapons/medi_shield_deploy.wav");
@@ -123,6 +131,19 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 
 		switch(TF2_GetPlayerClass(client))
 		{
+			case TFClass_Scout:
+			{
+				g_iDamageDone[client] = 0;
+				g_bAbilityActive[client] = true;
+				g_flAbilityTime[client] = GetGameTime() + 10.0;
+				
+				TF2_AddCondition(client, TFCond_Bonked);
+				
+				TF2_SetFOV(client, GetEntProp(client, Prop_Send, "m_iDefaultFOV"), 3.0, 120);			
+				
+				EmitSoundToAll("replay/exitperformancemode.wav", client);
+				EmitSoundToClient(client, "replay/exitperformancemode.wav");
+			}
 			case TFClass_Soldier:
 			{
 				if(!(GetEntityFlags(client) & FL_ONGROUND))
@@ -369,7 +390,8 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		return Plugin_Continue;	
 	
 	int iDmg;
-	switch(TF2_GetPlayerClass(client))
+	TFClassType class = TF2_GetPlayerClass(client);
+	switch(class)
 	{
 		case TFClass_Scout:		iDmg = DMG_SCOUT;
 		case TFClass_Soldier:	iDmg = DMG_SOLDIER;
@@ -380,6 +402,90 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		case TFClass_Medic:		iDmg = DMG_MEDIC;
 		case TFClass_Sniper:	iDmg = DMG_SNIPER;
 		case TFClass_Spy:		iDmg = DMG_SPY;
+	}
+	
+	if(class == TFClass_Scout)
+	{
+		if(!g_bAbilityActive[client])
+		{
+			if(g_hPositions[client] == null)
+			{
+				g_hPositions[client] = new ArrayList(3);
+				g_hAngles[client] = new ArrayList(3);
+				g_hHealthPoints[client] = new ArrayList(1);
+			}
+			else
+			{
+				float flPos[3], flAng[3], flLastPos[3];
+				GetClientAbsOrigin(client, flPos);
+				GetClientEyeAngles(client, flAng);
+				
+				int iLength = g_hPositions[client].Length;
+				
+				if(iLength > 0)
+				{
+					g_hPositions[client].GetArray(iLength - 1, flLastPos);
+				}
+				
+				if(g_hPositions[client].Length < 100)
+				{
+					if(GetVectorDistance(flPos, flLastPos) >= 10.0)
+					{
+						g_hPositions[client].PushArray(flPos);
+						g_hAngles[client].PushArray(flAng);
+						g_hHealthPoints[client].Push(GetEntProp(client, Prop_Send, "m_iHealth"));
+					}
+				}
+				else
+				{
+					g_hPositions[client].Erase(0);
+					g_hAngles[client].Erase(0);
+					g_hHealthPoints[client].Erase(0);
+				}
+				
+			//	PrintCenterText(client, "Pushed %f %f %f\nLastPos %f %f %f\nSize %i", flPos[0], flPos[1], flPos[2], flLastPos[0], flLastPos[1], flLastPos[2], iLength);
+			}
+		}
+		else
+		{
+			float flPos[3];
+			GetClientAbsOrigin(client, flPos);
+		
+			for(int i = 0; i < g_hPositions[client].Length; i++)
+			{
+				float flLastPos[3], flAng[3];
+				g_hPositions[client].GetArray(i, flLastPos);
+				g_hAngles[client].GetArray(i, flAng);
+				
+				float flVecTo[3];
+				MakeVectorFromPoints(flPos, flLastPos, flVecTo);
+				NormalizeVector(flVecTo, flVecTo);
+				ScaleVector(flVecTo, 600.0);
+				
+				TeleportEntity(client, NULL_VECTOR, flAng, flVecTo);
+				
+				if(GetVectorDistance(flPos, flLastPos) <= 32.0)
+				{
+				//	TE_SetupBeamPoints(flPos, flLastPos, g_iPathLaserModelIndex, g_iPathLaserModelIndex, 0, 30, 10.0, 2.0, 2.0, 2, 0.0, {255, 0, 255, 255}, 30);
+				//	TE_SendToAll();
+				
+					SetEntProp(client, Prop_Send, "m_iHealth", g_hHealthPoints[client].Get(i));
+					
+					g_hPositions[client].Erase(i);
+					g_hAngles[client].Erase(i);
+					g_hHealthPoints[client].Erase(i);
+				}
+			}
+			
+			if(g_hPositions[client].Length <= 0)
+			{
+				TF2_RemoveCondition(client, TFCond_Bonked);
+			
+				EmitSoundToAll("replay/rendercomplete.wav", client);
+				EmitSoundToClient(client, "replay/rendercomplete.wav");
+				EndAbilities(client);
+			}
+		}
 	}
 	
 	float flPercentage = g_iDamageDone[client] / float(iDmg) * 100;
@@ -394,7 +500,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			SetHudTextParams(0.55, -1.0, 0.1, 255, 255, 0, 0, 0, 0.0, 0.0, 0.0);
 			ShowHudText(client, -1, "[%.0fs]", g_flAbilityTime[client] - GetGameTime());
 		
-			switch(TF2_GetPlayerClass(client))
+			switch(class)
 			{
 				case TFClass_Sniper:
 				{
@@ -470,8 +576,9 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		
 		if(flPercentage == 100.0)
 		{
-			switch(TF2_GetPlayerClass(client))
+			switch(class)
 			{
+				case TFClass_Scout:		Format(strProgressBar, sizeof(strProgressBar), "REWIND");
 				case TFClass_Engineer:	Format(strProgressBar, sizeof(strProgressBar), "MOLTEN CORE");
 				case TFClass_Medic:		Format(strProgressBar, sizeof(strProgressBar), "RESURRECT");
 				case TFClass_Heavy:		Format(strProgressBar, sizeof(strProgressBar), "SHIELD");
@@ -501,6 +608,16 @@ void EndAbilities(int client)
 {
 	switch(TF2_GetPlayerClass(client))
 	{
+		case TFClass_Scout:
+		{
+			g_hPositions[client].Clear();
+			g_hAngles[client].Clear();
+			g_hHealthPoints[client].Clear();
+			
+			delete g_hPositions[client];
+			delete g_hAngles[client];
+			delete g_hHealthPoints[client];
+		}
 		case TFClass_Engineer:
 		{
 			SetVariantString("");

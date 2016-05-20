@@ -4,6 +4,7 @@
 #include <tf2_stocks>
 #include <tf2_extras>
 #include <tf2attributes>
+#include <tf2items>
 
 #pragma newdecls required
 
@@ -41,6 +42,9 @@ float flDeathAng[MAXPLAYERS+1][3];
 int g_iTarget[MAXPLAYERS+1];
 float g_flLockOnTime[MAXPLAYERS+1];
 bool g_bLocked[MAXPLAYERS+1];
+
+//Grapple
+bool g_bGrappling[MAXPLAYERS + 1];
 
 Handle g_hHudInfo;
 
@@ -127,9 +131,9 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 					g_flAbilityTime[client] = GetGameTime() + 3.0;
 					g_bAbilityActive[client] = true;
 					
+					SetEntityMoveType(client, MOVETYPE_NONE);
 					FireRocket(client);
 					Overlay(client, "effects/combine_binocoverlay");
-					SetEntityMoveType(client, MOVETYPE_NONE);
 				}
 			}
 			case TFClass_DemoMan:
@@ -264,6 +268,25 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 				
 				Particle_Create(client, "ghost_appearation", 20.0, 2.0);
 			}
+			case TFClass_Sniper:
+			{
+				g_flAbilityTime[client] = GetGameTime() + 12.0;
+			//	g_iDamageDone[client] = 0;
+				g_bAbilityActive[client] = true;
+			
+				Handle TF2Item = TF2Items_CreateItem(OVERRIDE_ALL|FORCE_GENERATION|PRESERVE_ATTRIBUTES);
+				TF2Items_SetClassname(TF2Item, "tf_weapon_grapplinghook");
+				TF2Items_SetItemIndex(TF2Item, 1152);
+				TF2Items_SetLevel(TF2Item, 100);
+				
+				int ItemEntity = TF2Items_GiveNamedItem(client, TF2Item);
+				delete TF2Item;
+
+				EquipPlayerWeapon(client, ItemEntity);
+
+				FakeClientCommand(client, "use tf_weapon_grapplinghook");
+				SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", ItemEntity);
+			}
 			case TFClass_Spy:
 			{
 				g_iDamageDone[client] = (iDmg / 2);
@@ -373,6 +396,26 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		
 			switch(TF2_GetPlayerClass(client))
 			{
+				case TFClass_Sniper:
+				{
+					int iGrapple = GetPlayerWeaponSlot(client, view_as<int>(TFWeaponSlot_PDA));
+					if(IsValidEntity(iGrapple))
+					{
+						int iProjectile = GetEntPropEnt(iGrapple, Prop_Send, "m_hProjectile");
+						if(g_bGrappling[client] && !IsValidEntity(iProjectile))
+						{
+							EndAbilities(client);
+						}
+						
+						if(GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon") == iGrapple)
+						{
+							g_bGrappling[client] = true;
+						
+							buttons |= IN_ATTACK;
+							return Plugin_Changed;
+						}
+					}
+				}
 				case TFClass_Engineer:
 				{
 					SetEntProp(client, Prop_Data, "m_iAmmo", 200, 4, 3);
@@ -432,9 +475,9 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				case TFClass_Engineer:	Format(strProgressBar, sizeof(strProgressBar), "MOLTEN CORE");
 				case TFClass_Medic:		Format(strProgressBar, sizeof(strProgressBar), "RESURRECT");
 				case TFClass_Heavy:		Format(strProgressBar, sizeof(strProgressBar), "SHIELD");
-				case TFClass_DemoMan:	Format(strProgressBar, sizeof(strProgressBar), "GRAVITON SURGE");	//TODO: launches a gravity bomb that draws in enemy combatants and deals damage while they’re trapped.
+				case TFClass_DemoMan:	Format(strProgressBar, sizeof(strProgressBar), "GRAVITON SURGE");
 				case TFClass_Spy:		Format(strProgressBar, sizeof(strProgressBar), "DEADEYE");			//TODO: shoots every enemy in his line of sight. The weaker his targets are, the faster he’ll line up a killshot.
-				case TFClass_Sniper:	Format(strProgressBar, sizeof(strProgressBar), "INFRA-SIGHT");		//TODO: see targets through walls and objects for a moderate amount of time. This enhanced vision is shared with allies.
+				case TFClass_Sniper:	Format(strProgressBar, sizeof(strProgressBar), "GRAPPLING HOOK");
 				case TFClass_Soldier:	Format(strProgressBar, sizeof(strProgressBar), "BARRAGE");
 				default:				Format(strProgressBar, sizeof(strProgressBar), "Not implemented");
 			}
@@ -493,6 +536,26 @@ void EndAbilities(int client)
 		
 			SetEntityMoveType(client, MOVETYPE_WALK);
 			Overlay(client, "\"\"");
+		}
+		case TFClass_Sniper:
+		{
+			int iGrapple = GetPlayerWeaponSlot(client, view_as<int>(TFWeaponSlot_PDA));
+			if(IsValidEntity(iGrapple))
+			{
+				int iLastWep = GetEntPropEnt(client, Prop_Data, "m_hLastWeapon");
+				if(IsValidEntity(iLastWep))
+				{
+					char strClass[64];
+					GetEntityClassname(iLastWep, strClass, sizeof(strClass));
+					FakeClientCommand(client, "use %s", strClass);
+					SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iLastWep);
+				}
+			
+				TF2_RemoveWeaponSlot(client, TFWeaponSlot_PDA);
+				TF2_RemoveWearable(client, iGrapple);
+			}
+			
+			g_bGrappling[client] = false;
 		}
 	}
 

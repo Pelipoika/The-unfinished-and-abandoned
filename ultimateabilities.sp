@@ -271,7 +271,7 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 			case TFClass_Sniper:
 			{
 				g_flAbilityTime[client] = GetGameTime() + 12.0;
-			//	g_iDamageDone[client] = 0;
+				g_iDamageDone[client] = 0;
 				g_bAbilityActive[client] = true;
 			
 				Handle TF2Item = TF2Items_CreateItem(OVERRIDE_ALL|FORCE_GENERATION|PRESERVE_ATTRIBUTES);
@@ -783,7 +783,7 @@ int CreateLauncher(int client, float flPos[3], float flAng[3])
 	AcceptEntityInput(ent, "AddOutput");
 	AcceptEntityInput(ent, "FireUser1");
 	
-	SetVariantString("OnUser2 !self:Kill::3.0:1");
+	SetVariantString("OnUser2 !self:Kill::10.0:1");
 	AcceptEntityInput(ent, "AddOutput");
 	AcceptEntityInput(ent, "FireUser2");
 	
@@ -817,7 +817,9 @@ public Action Timer_FireRocket(Handle timer, int iRef)
 	if(ent != INVALID_ENT_REFERENCE)
 	{
 		int client = GetEntPropEnt(ent, Prop_Send, "m_hOwnerEntity");
-	
+		
+		PrintToServer("moveparent %i", GetEntPropEnt(ent, Prop_Data, "m_hMoveParent"));
+		
 		float flAng[3];
 		GetClientEyeAngles(client, flAng);
 		DispatchKeyValueVector(ent, "angles", flAng);

@@ -818,8 +818,6 @@ public Action Timer_FireRocket(Handle timer, int iRef)
 	{
 		int client = GetEntPropEnt(ent, Prop_Send, "m_hOwnerEntity");
 		
-		PrintToServer("moveparent %i", GetEntPropEnt(ent, Prop_Data, "m_hMoveParent"));
-		
 		float flAng[3];
 		GetClientEyeAngles(client, flAng);
 		DispatchKeyValueVector(ent, "angles", flAng);

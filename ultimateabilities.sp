@@ -108,224 +108,227 @@ public void OnMapStart()
 
 public Action OnClientCommandKeyValues(int client, KeyValues kv)
 {
-	char strCmd[256];
-	kv.GetSectionName(strCmd, 256);
-	
-	int iDmg;
-	switch(TF2_GetPlayerClass(client))
+	if(TF2_IsMvM && TF2_GetClientTeam(client) != TFTeam_Blue)
 	{
-		case TFClass_Scout:		iDmg = DMG_SCOUT;
-		case TFClass_Soldier:	iDmg = DMG_SOLDIER;
-		case TFClass_Pyro:		iDmg = DMG_PYRO;
-		case TFClass_DemoMan:	iDmg = DMG_DEMO;
-		case TFClass_Heavy:		iDmg = DMG_HEAVY;
-		case TFClass_Engineer:	iDmg = DMG_ENGINEER;
-		case TFClass_Medic:		iDmg = DMG_MEDIC;
-		case TFClass_Sniper:	iDmg = DMG_SNIPER;
-		case TFClass_Spy:		iDmg = DMG_SPY;
-	}
-	
-	if(StrEqual(strCmd, "+use_action_slot_item_server") && client > 0 && client <= MaxClients && IsClientInGame(client) && IsPlayerAlive(client) && g_iDamageDone[client] >= iDmg && !g_bAbilityActive[client])
-	{
-		MeleeDare(client);
-
+		char strCmd[256];
+		kv.GetSectionName(strCmd, 256);
+		
+		int iDmg;
 		switch(TF2_GetPlayerClass(client))
 		{
-			case TFClass_Scout:
+			case TFClass_Scout:		iDmg = DMG_SCOUT;
+			case TFClass_Soldier:	iDmg = DMG_SOLDIER;
+			case TFClass_Pyro:		iDmg = DMG_PYRO;
+			case TFClass_DemoMan:	iDmg = DMG_DEMO;
+			case TFClass_Heavy:		iDmg = DMG_HEAVY;
+			case TFClass_Engineer:	iDmg = DMG_ENGINEER;
+			case TFClass_Medic:		iDmg = DMG_MEDIC;
+			case TFClass_Sniper:	iDmg = DMG_SNIPER;
+			case TFClass_Spy:		iDmg = DMG_SPY;
+		}
+		
+		if(StrEqual(strCmd, "+use_action_slot_item_server") && client > 0 && client <= MaxClients && IsClientInGame(client) && IsPlayerAlive(client) && g_iDamageDone[client] >= iDmg && !g_bAbilityActive[client])
+		{
+			MeleeDare(client);
+	
+			switch(TF2_GetPlayerClass(client))
 			{
-				g_iDamageDone[client] = 0;
-				g_bAbilityActive[client] = true;
-				g_flAbilityTime[client] = GetGameTime() + 10.0;
-				
-				TF2_AddCondition(client, TFCond_Bonked);
-				
-				TF2_SetFOV(client, GetEntProp(client, Prop_Send, "m_iDefaultFOV"), 3.0, 120);			
-				
-				EmitSoundToAll("replay/exitperformancemode.wav", client);
-				EmitSoundToClient(client, "replay/exitperformancemode.wav");
-			}
-			case TFClass_Soldier:
-			{
-				if(!(GetEntityFlags(client) & FL_ONGROUND))
+				case TFClass_Scout:
 				{
 					g_iDamageDone[client] = 0;
-					g_flAbilityTime[client] = GetGameTime() + 3.0;
+					g_bAbilityActive[client] = true;
+					g_flAbilityTime[client] = GetGameTime() + 10.0;
+					
+					TF2_AddCondition(client, TFCond_Bonked);
+					
+					TF2_SetFOV(client, GetEntProp(client, Prop_Send, "m_iDefaultFOV"), 3.0, 120);			
+					
+					EmitSoundToAll("replay/exitperformancemode.wav", client);
+					EmitSoundToClient(client, "replay/exitperformancemode.wav");
+				}
+				case TFClass_Soldier:
+				{
+					if(!(GetEntityFlags(client) & FL_ONGROUND))
+					{
+						g_iDamageDone[client] = 0;
+						g_flAbilityTime[client] = GetGameTime() + 3.0;
+						g_bAbilityActive[client] = true;
+						
+						SetEntityMoveType(client, MOVETYPE_NONE);
+						FireRocket(client);
+						Overlay(client, "effects/combine_binocoverlay");
+					}
+				}
+				case TFClass_DemoMan:
+				{
+					float flStartPos[3], flEyeAng[3], flForw[3];
+					GetClientEyePosition(client, flStartPos);
+					GetClientEyeAngles(client, flEyeAng);
+					
+					GetAngleVectors(flEyeAng, flForw, NULL_VECTOR, NULL_VECTOR) 
+			
+					flStartPos[0] += (flForw[0] * 100.0);
+					flStartPos[1] += (flForw[1] * 100.0);
+					flStartPos[2] += (flForw[2] * 100.0);
+					
+					Handle hTrace = TR_TraceRayFilterEx(flStartPos, flEyeAng, MASK_SHOT, RayType_Infinite, AimTargetFilter, client);
+					float flHitPos[3];
+					TR_GetEndPosition(flHitPos, hTrace);
+					
+					float flResult[3];
+					SubtractVectors(flStartPos, flHitPos, flResult);
+					NegateVector(flResult);
+					NormalizeVector(flResult, flResult);
+					ScaleVector(flResult, 1000.0);
+				
+					g_iDamageDone[client] = 0;
+					g_flAbilityTime[client] = GetGameTime() + 10.0;
 					g_bAbilityActive[client] = true;
 					
-					SetEntityMoveType(client, MOVETYPE_NONE);
-					FireRocket(client);
+					int bomb = CreateEntityByName("tf_projectile_pipe_remote");	
+					DispatchKeyValueVector(bomb, "origin", flStartPos);
+					DispatchKeyValueVector(bomb, "basevelocity", flResult);
+					DispatchKeyValueVector(bomb, "velocity", flResult);
+					DispatchKeyValue(bomb, "ModelScale", "5.0");
+					
+					if (TF2_GetClientTeam(client) == TFTeam_Red) 
+						DispatchKeyValue(bomb, "skin", "0");
+					else if (TF2_GetClientTeam(client) == TFTeam_Blue) 
+						DispatchKeyValue(bomb, "skin", "1");
+				
+					SetEntPropEnt(bomb, Prop_Data, "m_hThrower", client);
+					SetEntProp(bomb, Prop_Send, "m_iType", 1);
+					SetEntPropFloat(bomb, Prop_Data, "m_flDetonateTime", GetGameTime() + 6.0);
+					
+					DispatchSpawn(bomb);
+					
+					SetEntityModel(bomb, MODEL_GRAVITON);
+	
+					if(TF2_GetClientTeam(client) == TFTeam_Blue)
+						Particle_Create(bomb, "spell_fireball_small_blue", _, 1.0, true);
+					else
+						Particle_Create(bomb, "spell_fireball_small_red", _, 1.0, true);
+						
+					TeleportEntity(bomb, NULL_VECTOR, NULL_VECTOR, flResult);
+	
+					SDKHook(bomb, SDKHook_Think, OnGravitonThink);
+				}
+				case TFClass_Heavy:
+				{
+					g_iDamageDone[client] = 0;
+					g_flAbilityTime[client] = GetGameTime() + 20.0;
+					g_bAbilityActive[client] = true;
+				
+					int shield = CreateEntityByName("entity_medigun_shield");	
+					SetEntPropEnt(shield, Prop_Send, "m_hOwnerEntity", client);  
+					SetEntProp(shield, Prop_Send, "m_iTeamNum", GetClientTeam(client));  
+					SetEntProp(shield, Prop_Data, "m_iInitialTeamNum", GetClientTeam(client));  
+					
+					if (TF2_GetClientTeam(client) == TFTeam_Red) 
+						DispatchKeyValue(shield, "skin", "0");
+					else if (TF2_GetClientTeam(client) == TFTeam_Blue) 
+						DispatchKeyValue(shield, "skin", "1");
+					
+					SetEntPropFloat(client, Prop_Send, "m_flRageMeter", 200.0);
+					SetEntProp(client, Prop_Send, "m_bRageDraining", 1);
+					
+					DispatchSpawn(shield);
+					
+					EmitSoundToClient(client, "weapons/medi_shield_deploy.wav", shield);
+					SetEntityModel(shield, "models/props_mvm/mvm_player_shield2.mdl");
+				}
+				case TFClass_Medic:
+				{
+					g_iDamageDone[client] = 0;
+				
+					for(int i = 1; i <= MaxClients; i++)
+					{
+						if(IsClientInGame(i) && !IsPlayerAlive(i) && TF2_GetClientTeam(i) == TF2_GetClientTeam(client))
+						{
+							TF2_RespawnPlayer(i);
+							
+							float flTimeImmunity = 3.0;
+							
+							TF2_AddCondition(i, TFCond_UberchargedCanteen, flTimeImmunity);
+							TeleportEntity(i, flDeathPos[i], flDeathAng[i], NULL_VECTOR);
+							
+							Particle_Create(i, "teleporter_mvm_bot_persist", 0.0, flTimeImmunity);
+							
+							SetVariantString("randomnum:30");
+							AcceptEntityInput(i, "AddContext");
+	
+							SetVariantString("TLK_RESURRECTED");
+							AcceptEntityInput(i, "SpeakResponseConcept");
+	
+							AcceptEntityInput(i, "ClearContext");
+						}
+					}
+				}
+				case TFClass_Engineer:
+				{
+					g_iDamageDone[client] = 0;
+					g_flAbilityTime[client] = GetGameTime() + 20.0;
+					g_bAbilityActive[client] = true;
+					
+					SetVariantString(MODEL_ENGINEER);
+					AcceptEntityInput(client, "SetCustomModel");
+					SetEntProp(client, Prop_Send, "m_bUseClassAnimations", 1);
+					
+					EmitSoundToAll(ENGINE_LOOP, client, _, _, _, 0.5);
+					
+					if(TF2_GetClientTeam(client) == TFTeam_Blue)
+						EmitSoundToAll("misc/cp_harbor_blue_whistle.wav", client, _, _, _, 0.25);	//LOUD
+					else
+						EmitSoundToAll("misc/cp_harbor_red_whistle.wav", client, _, _, _, 0.25);
+					
+					int iPrimary = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary);
+					TF2Attrib_SetByName(iPrimary, "fire rate bonus", 0.75);
+					int iSecondary = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary);
+					TF2Attrib_SetByName(iSecondary, "fire rate bonus", 0.75);
+					int iMelee = GetPlayerWeaponSlot(client, TFWeaponSlot_Melee);
+					TF2Attrib_SetByName(iMelee, "melee attack rate bonus", 0.5);
+					TF2Attrib_SetByName(iMelee, "Construction rate increased", 2.0);
+					
+					Particle_Create(client, "ghost_appearation", 20.0, 2.0);
+				}
+				case TFClass_Sniper:
+				{
+					g_flAbilityTime[client] = GetGameTime() + 12.0;
+					g_iDamageDone[client] = 0;
+					g_bAbilityActive[client] = true;
+				
+					Handle TF2Item = TF2Items_CreateItem(OVERRIDE_ALL|FORCE_GENERATION|PRESERVE_ATTRIBUTES);
+					TF2Items_SetClassname(TF2Item, "tf_weapon_grapplinghook");
+					TF2Items_SetItemIndex(TF2Item, 1152);
+					TF2Items_SetLevel(TF2Item, 100);
+					
+					int ItemEntity = TF2Items_GiveNamedItem(client, TF2Item);
+					delete TF2Item;
+	
+					EquipPlayerWeapon(client, ItemEntity);
+	
+					FakeClientCommand(client, "use tf_weapon_grapplinghook");
+					SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", ItemEntity);
+				}
+				case TFClass_Spy:
+				{
+					g_iDamageDone[client] = (iDmg / 2);
+					g_flAbilityTime[client] = GetGameTime() + 20.0;
+					g_bAbilityActive[client] = true;
+					
+					g_flLockOnTime[client] = GetGameTime() + 1.0;
+					g_bLocked[client] = false;
+					g_iTarget[client] = -1;
+					
+					EmitSoundToAll("replay/enterperformancemode.wav", client);
+					EmitSoundToClient(client, "replay/cameracontrolmodeentered.wav");
+					TF2_SetFOV(client, GetEntProp(client, Prop_Send, "m_iDefaultFOV"), 1.0, 0);
 					Overlay(client, "effects/combine_binocoverlay");
 				}
 			}
-			case TFClass_DemoMan:
-			{
-				float flStartPos[3], flEyeAng[3], flForw[3];
-				GetClientEyePosition(client, flStartPos);
-				GetClientEyeAngles(client, flEyeAng);
-				
-				GetAngleVectors(flEyeAng, flForw, NULL_VECTOR, NULL_VECTOR) 
-		
-				flStartPos[0] += (flForw[0] * 100.0);
-				flStartPos[1] += (flForw[1] * 100.0);
-				flStartPos[2] += (flForw[2] * 100.0);
-				
-				Handle hTrace = TR_TraceRayFilterEx(flStartPos, flEyeAng, MASK_SHOT, RayType_Infinite, AimTargetFilter, client);
-				float flHitPos[3];
-				TR_GetEndPosition(flHitPos, hTrace);
-				
-				float flResult[3];
-				SubtractVectors(flStartPos, flHitPos, flResult);
-				NegateVector(flResult);
-				NormalizeVector(flResult, flResult);
-				ScaleVector(flResult, 1000.0);
 			
-				g_iDamageDone[client] = 0;
-				g_flAbilityTime[client] = GetGameTime() + 10.0;
-				g_bAbilityActive[client] = true;
-				
-				int bomb = CreateEntityByName("tf_projectile_pipe_remote");	
-				DispatchKeyValueVector(bomb, "origin", flStartPos);
-				DispatchKeyValueVector(bomb, "basevelocity", flResult);
-				DispatchKeyValueVector(bomb, "velocity", flResult);
-				DispatchKeyValue(bomb, "ModelScale", "5.0");
-				
-				if (TF2_GetClientTeam(client) == TFTeam_Red) 
-					DispatchKeyValue(bomb, "skin", "0");
-				else if (TF2_GetClientTeam(client) == TFTeam_Blue) 
-					DispatchKeyValue(bomb, "skin", "1");
-			
-				SetEntPropEnt(bomb, Prop_Data, "m_hThrower", client);
-				SetEntProp(bomb, Prop_Send, "m_iType", 1);
-				SetEntPropFloat(bomb, Prop_Data, "m_flDetonateTime", GetGameTime() + 6.0);
-				
-				DispatchSpawn(bomb);
-				
-				SetEntityModel(bomb, MODEL_GRAVITON);
-
-				if(TF2_GetClientTeam(client) == TFTeam_Blue)
-					Particle_Create(bomb, "spell_fireball_small_blue", _, 1.0, true);
-				else
-					Particle_Create(bomb, "spell_fireball_small_red", _, 1.0, true);
-					
-				TeleportEntity(bomb, NULL_VECTOR, NULL_VECTOR, flResult);
-
-				SDKHook(bomb, SDKHook_Think, OnGravitonThink);
-			}
-			case TFClass_Heavy:
-			{
-				g_iDamageDone[client] = 0;
-				g_flAbilityTime[client] = GetGameTime() + 20.0;
-				g_bAbilityActive[client] = true;
-			
-				int shield = CreateEntityByName("entity_medigun_shield");	
-				SetEntPropEnt(shield, Prop_Send, "m_hOwnerEntity", client);  
-				SetEntProp(shield, Prop_Send, "m_iTeamNum", GetClientTeam(client));  
-				SetEntProp(shield, Prop_Data, "m_iInitialTeamNum", GetClientTeam(client));  
-				
-				if (TF2_GetClientTeam(client) == TFTeam_Red) 
-					DispatchKeyValue(shield, "skin", "0");
-				else if (TF2_GetClientTeam(client) == TFTeam_Blue) 
-					DispatchKeyValue(shield, "skin", "1");
-				
-				SetEntPropFloat(client, Prop_Send, "m_flRageMeter", 200.0);
-				SetEntProp(client, Prop_Send, "m_bRageDraining", 1);
-				
-				DispatchSpawn(shield);
-				
-				EmitSoundToClient(client, "weapons/medi_shield_deploy.wav", shield);
-				SetEntityModel(shield, "models/props_mvm/mvm_player_shield2.mdl");
-			}
-			case TFClass_Medic:
-			{
-				g_iDamageDone[client] = 0;
-			
-				for(int i = 1; i <= MaxClients; i++)
-				{
-					if(IsClientInGame(i) && !IsPlayerAlive(i) && TF2_GetClientTeam(i) == TF2_GetClientTeam(client))
-					{
-						TF2_RespawnPlayer(i);
-						
-						float flTimeImmunity = 3.0;
-						
-						TF2_AddCondition(i, TFCond_UberchargedCanteen, flTimeImmunity);
-						TeleportEntity(i, flDeathPos[i], flDeathAng[i], NULL_VECTOR);
-						
-						Particle_Create(i, "teleporter_mvm_bot_persist", 0.0, flTimeImmunity);
-						
-						SetVariantString("randomnum:30");
-						AcceptEntityInput(i, "AddContext");
-
-						SetVariantString("TLK_RESURRECTED");
-						AcceptEntityInput(i, "SpeakResponseConcept");
-
-						AcceptEntityInput(i, "ClearContext");
-					}
-				}
-			}
-			case TFClass_Engineer:
-			{
-				g_iDamageDone[client] = 0;
-				g_flAbilityTime[client] = GetGameTime() + 20.0;
-				g_bAbilityActive[client] = true;
-				
-				SetVariantString(MODEL_ENGINEER);
-				AcceptEntityInput(client, "SetCustomModel");
-				SetEntProp(client, Prop_Send, "m_bUseClassAnimations", 1);
-				
-				EmitSoundToAll(ENGINE_LOOP, client, _, _, _, 0.5);
-				
-				if(TF2_GetClientTeam(client) == TFTeam_Blue)
-					EmitSoundToAll("misc/cp_harbor_blue_whistle.wav", client, _, _, _, 0.25);	//LOUD
-				else
-					EmitSoundToAll("misc/cp_harbor_red_whistle.wav", client, _, _, _, 0.25);
-				
-				int iPrimary = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary);
-				TF2Attrib_SetByName(iPrimary, "fire rate bonus", 0.75);
-				int iSecondary = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary);
-				TF2Attrib_SetByName(iSecondary, "fire rate bonus", 0.75);
-				int iMelee = GetPlayerWeaponSlot(client, TFWeaponSlot_Melee);
-				TF2Attrib_SetByName(iMelee, "melee attack rate bonus", 0.5);
-				TF2Attrib_SetByName(iMelee, "Construction rate increased", 2.0);
-				
-				Particle_Create(client, "ghost_appearation", 20.0, 2.0);
-			}
-			case TFClass_Sniper:
-			{
-				g_flAbilityTime[client] = GetGameTime() + 12.0;
-				g_iDamageDone[client] = 0;
-				g_bAbilityActive[client] = true;
-			
-				Handle TF2Item = TF2Items_CreateItem(OVERRIDE_ALL|FORCE_GENERATION|PRESERVE_ATTRIBUTES);
-				TF2Items_SetClassname(TF2Item, "tf_weapon_grapplinghook");
-				TF2Items_SetItemIndex(TF2Item, 1152);
-				TF2Items_SetLevel(TF2Item, 100);
-				
-				int ItemEntity = TF2Items_GiveNamedItem(client, TF2Item);
-				delete TF2Item;
-
-				EquipPlayerWeapon(client, ItemEntity);
-
-				FakeClientCommand(client, "use tf_weapon_grapplinghook");
-				SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", ItemEntity);
-			}
-			case TFClass_Spy:
-			{
-				g_iDamageDone[client] = (iDmg / 2);
-				g_flAbilityTime[client] = GetGameTime() + 20.0;
-				g_bAbilityActive[client] = true;
-				
-				g_flLockOnTime[client] = GetGameTime() + 1.0;
-				g_bLocked[client] = false;
-				g_iTarget[client] = -1;
-				
-				EmitSoundToAll("replay/enterperformancemode.wav", client);
-				EmitSoundToClient(client, "replay/cameracontrolmodeentered.wav");
-				TF2_SetFOV(client, GetEntProp(client, Prop_Send, "m_iDefaultFOV"), 1.0, 0);
-				Overlay(client, "effects/combine_binocoverlay");
-			}
+			return Plugin_Stop;
 		}
-		
-		return Plugin_Stop;
 	}
 	
 	return Plugin_Continue;
@@ -388,6 +391,9 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 {
 	if(buttons & IN_SCORE || IsFakeClient(client))
 		return Plugin_Continue;	
+	
+	if(TF2_IsMvM && TF2_GetClientTeam(client) == TFTeam_Blue)
+		return Plugin_Continue;
 	
 	int iDmg;
 	TFClassType class = TF2_GetPlayerClass(client);
@@ -1036,4 +1042,9 @@ stock void MeleeDare(int client)
 	AcceptEntityInput(client, "SpeakResponseConcept");
 	    
 	AcceptEntityInput(client, "ClearContext");
+}
+
+stock bool TF2_IsMvM()
+{
+	return view_as<bool>(GameRules_GetProp("m_bPlayingMannVsMachine"));
 }

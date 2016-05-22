@@ -9,14 +9,14 @@
 #pragma newdecls required
 
 #define DMG_SCOUT    300
-#define DMG_SOLDIER  3000
+#define DMG_SOLDIER  2000
 #define DMG_PYRO     100
-#define DMG_DEMO     5000
-#define DMG_HEAVY    5000
-#define DMG_ENGINEER 5000
+#define DMG_DEMO     2000
+#define DMG_HEAVY    2000
+#define DMG_ENGINEER 2000
 #define DMG_MEDIC    100
 #define DMG_SNIPER   300
-#define DMG_SPY      3000
+#define DMG_SPY      2000
 
 char g_strClassName[][] = {"", "scout", "sniper", "soldier", "demoman", "medic", "heavy", "pyro", "spy", "engineer"};
 char g_strSoundRobotFallDamage[][] = {"mvm/mvm_fallpain01.wav", "mvm/mvm_fallpain02.wav"};
@@ -30,10 +30,12 @@ char g_strSoundRobotFootsteps[][] =
 };
 
 //General
+//int g_iPathLaserModelIndex = -1;
 int g_iDamageDone[MAXPLAYERS+1];
 bool g_bAbilityActive[MAXPLAYERS+1];
 float g_flAbilityTime[MAXPLAYERS+1];
 bool g_bIsMvM;
+Handle g_hHudInfo;
 
 //Resurrect
 float flDeathPos[MAXPLAYERS+1][3];
@@ -47,7 +49,10 @@ bool g_bLocked[MAXPLAYERS+1];
 //Grapple
 bool g_bGrappling[MAXPLAYERS + 1];
 
-Handle g_hHudInfo;
+//Rewind
+ArrayList g_hPositions[MAXPLAYERS + 1];
+ArrayList g_hAngles[MAXPLAYERS + 1];
+ArrayList g_hHealthPoints[MAXPLAYERS + 1];
 
 #define MODEL_ENGINEER	"models/bots/engineer/bot_engineer.mdl"
 #define MODEL_GRAVITON	"models/empty.mdl"
@@ -65,19 +70,22 @@ public Plugin myinfo =
 	url = "http://www.sourcemod.net/plugins.php?author=Pelipoika&search=1"
 };
 
-ArrayList g_hPositions[MAXPLAYERS + 1];
-ArrayList g_hAngles[MAXPLAYERS + 1];
-ArrayList g_hHealthPoints[MAXPLAYERS + 1];
-//int g_iPathLaserModelIndex = -1;
-
 public void OnPluginStart()
 {
 	HookEvent("player_hurt", Event_PlayerHurt);
 	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
 	
 	g_hHudInfo = CreateHudSynchronizer();
-	
+
 	AddNormalSoundHook(NormalSoundHook);
+	
+	RegAdminCmd("sm_fillult", Command_GiveUlt, ADMFLAG_ROOT);
+}
+
+public Action Command_GiveUlt(int client, int args)
+{
+	g_iDamageDone[client] = 999999;
+	return Plugin_Handled;
 }
 
 public void OnMapStart()
@@ -147,6 +155,8 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 				g_iDamageDone[client] = 0;
 				g_bAbilityActive[client] = true;
 				g_flAbilityTime[client] = GetGameTime() + 10.0;
+				
+				SetEntityMoveType(client, MOVETYPE_NOCLIP);
 				
 				TF2_AddCondition(client, TFCond_Bonked);
 				
@@ -345,59 +355,6 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 	return Plugin_Continue;
 }
 
-void OnGravitonThink(int iEnt)
-{
-	float flPos[3];
-	GetEntPropVector(iEnt, Prop_Send, "m_vecOrigin", flPos);
-	
-	int iClient = GetEntPropEnt(iEnt, Prop_Data, "m_hThrower");
-	
-	if(GetEntProp(iEnt, Prop_Send, "m_bTouched") == 1)
-	{
-		if(GetEntProp(iEnt, Prop_Send, "m_bIsLive") == 0)
-		{
-			EmitSoundToAll("misc/halloween_eyeball/vortex_eyeball_moved.wav", iEnt);
-			
-			Particle_Create(iEnt, "eyeboss_tp_vortex", _, _, true);
-			
-			if(TF2_GetClientTeam(iClient) == TFTeam_Blue)
-				Particle_Create(iEnt, "eyeboss_vortex_blue", _, _, true);
-			else
-				Particle_Create(iEnt, "eyeboss_vortex_red", _, _, true);
-			
-			SetEntProp(iEnt, Prop_Send, "m_bIsLive", 1);
-		}
-		
-		for(int i = 1; i <= MaxClients; i++)
-		{
-			if(IsClientInGame(i))
-			{
-				float flPlayer[3];
-				GetClientAbsOrigin(i, flPlayer);
-				
-				float flDistance = GetVectorDistance(flPlayer, flPos);
-				if(flDistance <= 225.0 && iClient != i && GetClientTeam(i) != GetClientTeam(iClient))
-				{
-					float flVelocity[3];
-					MakeVectorFromPoints(flPlayer, flPos, flVelocity);
-					ScaleVector(flVelocity, 3.0);
-					
-					TeleportEntity(i, NULL_VECTOR, NULL_VECTOR, flVelocity);
-					SDKHooks_TakeDamage(i, iClient, iClient, GetRandomFloat(2.0, 5.0), DMG_GENERIC, _, flVelocity, flPos);
-				}
-			}
-		}
-		
-		float flDetonateTime = GetEntPropFloat(iEnt, Prop_Data, "m_flDetonateTime");
-		if(flDetonateTime <= GetGameTime())
-		{
-			SDKUnhook(iEnt, SDKHook_Think, OnGravitonThink);
-	
-			AcceptEntityInput(iEnt, "Kill");
-		}
-	}
-}
-
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
 	if(buttons & IN_SCORE || IsFakeClient(client))
@@ -496,10 +453,6 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			
 			if(g_hPositions[client].Length <= 0)
 			{
-				TF2_RemoveCondition(client, TFCond_Bonked);
-			
-				EmitSoundToAll("replay/rendercomplete.wav", client);
-				EmitSoundToClient(client, "replay/rendercomplete.wav");
 				EndAbilities(client);
 			}
 		}
@@ -627,6 +580,13 @@ void EndAbilities(int client)
 	{
 		case TFClass_Scout:
 		{
+			SetEntityMoveType(client, MOVETYPE_WALK);
+			
+			TF2_RemoveCondition(client, TFCond_Bonked);
+		
+			EmitSoundToAll("replay/rendercomplete.wav", client);
+			EmitSoundToClient(client, "replay/rendercomplete.wav");
+
 			g_hPositions[client].Clear();
 			g_hAngles[client].Clear();
 			g_hHealthPoints[client].Clear();
@@ -695,6 +655,100 @@ void EndAbilities(int client)
 
 	g_bAbilityActive[client] = false;
 }
+
+void OnGravitonThink(int iEnt)
+{
+	float flPos[3];
+	GetEntPropVector(iEnt, Prop_Send, "m_vecOrigin", flPos);
+	
+	int iClient = GetEntPropEnt(iEnt, Prop_Data, "m_hThrower");
+	
+	if(GetEntProp(iEnt, Prop_Send, "m_bTouched") == 1)
+	{
+		if(GetEntProp(iEnt, Prop_Send, "m_bIsLive") == 0)
+		{
+			EmitSoundToAll("misc/halloween_eyeball/vortex_eyeball_moved.wav", iEnt);
+			
+			Particle_Create(iEnt, "eyeboss_tp_vortex", _, _, true);
+			
+			if(TF2_GetClientTeam(iClient) == TFTeam_Blue)
+				Particle_Create(iEnt, "eyeboss_vortex_blue", _, _, true);
+			else
+				Particle_Create(iEnt, "eyeboss_vortex_red", _, _, true);
+			
+			SetEntProp(iEnt, Prop_Send, "m_bIsLive", 1);
+		}
+		
+		for(int i = 1; i <= MaxClients; i++)
+		{
+			if(IsClientInGame(i))
+			{
+				float flPlayer[3];
+				GetClientAbsOrigin(i, flPlayer);
+				
+				float flDistance = GetVectorDistance(flPlayer, flPos);
+				if(flDistance <= 225.0 && iClient != i && GetClientTeam(i) != GetClientTeam(iClient))
+				{
+					float flVelocity[3];
+					MakeVectorFromPoints(flPlayer, flPos, flVelocity);
+					ScaleVector(flVelocity, 3.0);
+					
+					TeleportEntity(i, NULL_VECTOR, NULL_VECTOR, flVelocity);
+					SDKHooks_TakeDamage(i, iClient, iClient, GetRandomFloat(2.0, 5.0), DMG_GENERIC, _, flVelocity, flPos);
+				}
+			}
+		}
+		
+		float flDetonateTime = GetEntPropFloat(iEnt, Prop_Data, "m_flDetonateTime");
+		if(flDetonateTime <= GetGameTime())
+		{
+			SDKUnhook(iEnt, SDKHook_Think, OnGravitonThink);
+	
+			AcceptEntityInput(iEnt, "Kill");
+		}
+	}
+}
+
+int CreateLauncher(int client, float flPos[3], float flAng[3])
+{
+	int ent = CreateEntityByName("tf_point_weapon_mimic");
+	DispatchKeyValueVector(ent, "origin", flPos);
+	DispatchKeyValueVector(ent, "angles", flAng);
+	DispatchKeyValue(ent, "ModelOverride", "models/weapons/w_models/w_rocket_airstrike/w_rocket_airstrike.mdl");
+	DispatchKeyValue(ent, "WeaponType", "0");
+	DispatchKeyValue(ent, "SpeedMin", "600");
+	DispatchKeyValue(ent, "SpeedMax", "1100");
+	DispatchKeyValue(ent, "Damage", "50");
+	DispatchKeyValue(ent, "SplashRadius", "100");
+	DispatchKeyValue(ent, "SpreadAngle", "5");
+	DispatchSpawn(ent);
+	
+	SetEntPropEnt(ent, Prop_Send, "m_hOwnerEntity", client);
+
+	CreateTimer(0.2, Timer_FireRocket, EntIndexToEntRef(ent), TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+	
+	SetVariantString("OnUser1 !self:ClearParent::2.95:1");
+	AcceptEntityInput(ent, "AddOutput");
+	AcceptEntityInput(ent, "FireUser1");
+	
+	SetVariantString("OnUser2 !self:Kill::10.0:1");
+	AcceptEntityInput(ent, "AddOutput");
+	AcceptEntityInput(ent, "FireUser2");
+	
+	return ent;
+}
+
+void FireRocket(int client)
+{
+	float flPos[3], flAng[3];
+	GetClientEyeAngles(client, flAng);
+	GetClientEyePosition(client, flPos);
+	
+	int l1 = CreateLauncher(client, flPos, flAng);
+	SetEntProp(l1, Prop_Data, "m_nSimulationTick", 1);
+	int l2 = CreateLauncher(client, flPos, flAng);
+	SetEntProp(l2, Prop_Data, "m_nSimulationTick", 2);
+} 
 
 public Action TF2_CalcIsAttackCritical(int client, int weapon, char[] weaponname, bool &result)
 {
@@ -892,59 +946,6 @@ public void Event_PlayerHurt(Event event, const char[] name, bool dontBroadcast)
 	}
 }
 
-int CreateLauncher(int client, float flPos[3], float flAng[3])
-{
-	int ent = CreateEntityByName("tf_point_weapon_mimic");
-	DispatchKeyValueVector(ent, "origin", flPos);
-	DispatchKeyValueVector(ent, "angles", flAng);
-	DispatchKeyValue(ent, "ModelOverride", "models/weapons/w_models/w_rocket_airstrike/w_rocket_airstrike.mdl");
-	DispatchKeyValue(ent, "WeaponType", "0");
-	DispatchKeyValue(ent, "SpeedMin", "600");
-	DispatchKeyValue(ent, "SpeedMax", "1100");
-	DispatchKeyValue(ent, "Damage", "50");
-	DispatchKeyValue(ent, "SplashRadius", "100");
-	DispatchKeyValue(ent, "SpreadAngle", "5");
-	DispatchSpawn(ent);
-	
-	SetEntPropEnt(ent, Prop_Send, "m_hOwnerEntity", client);
-
-	CreateTimer(0.2, Timer_FireRocket, EntIndexToEntRef(ent), TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
-	
-	SetVariantString("OnUser1 !self:ClearParent::2.95:1");
-	AcceptEntityInput(ent, "AddOutput");
-	AcceptEntityInput(ent, "FireUser1");
-	
-	SetVariantString("OnUser2 !self:Kill::10.0:1");
-	AcceptEntityInput(ent, "AddOutput");
-	AcceptEntityInput(ent, "FireUser2");
-	
-	return ent;
-}
-
-void FireRocket(int client)
-{
-	float flPos[3], flAng[3], vLeft[3];
-	GetClientEyeAngles(client, flAng);
-
-	GetClientEyePosition(client, flPos);
-	GetAngleVectors(flAng, NULL_VECTOR, vLeft, NULL_VECTOR);
-	flPos[0] += (vLeft[0] * -45);
-	flPos[1] += (vLeft[1] * -45);
-	flPos[2] += (vLeft[2] * -45);
-	int l1 = CreateLauncher(client, flPos, flAng);
-	
-	SetEntProp(l1, Prop_Data, "m_nSimulationTick", 1);
-	
-	GetClientEyePosition(client, flPos);
-	GetAngleVectors(flAng, NULL_VECTOR, vLeft, NULL_VECTOR);
-	flPos[0] += (vLeft[0] * 45);
-	flPos[1] += (vLeft[1] * 45);
-	flPos[2] += (vLeft[2] * 45);
-	int l2 = CreateLauncher(client, flPos, flAng);
-	
-	SetEntProp(l2, Prop_Data, "m_nSimulationTick", 2);
-} 
-
 public Action Timer_FireRocket(Handle timer, int iRef)
 {
 	int ent = EntRefToEntIndex(iRef);
@@ -953,26 +954,29 @@ public Action Timer_FireRocket(Handle timer, int iRef)
 		int client = GetEntPropEnt(ent, Prop_Send, "m_hOwnerEntity");
 		int iLauncher = GetEntProp(ent, Prop_Data, "m_nSimulationTick");
 		
+		float flMaxs[3];
+		GetEntPropVector(client, Prop_Send, "m_vecMaxs", flMaxs);
+		
 		float flPos[3], flAng[3], vLeft[3];
 		GetClientEyeAngles(client, flAng);
-
+		GetClientEyePosition(client, flPos);
+		GetAngleVectors(flAng, NULL_VECTOR, vLeft, NULL_VECTOR);
+		
+		flPos[2] -= GetRandomFloat(0.0, 42.0);
+		
 		switch(iLauncher)
 		{
 			case 1:
 			{
-				GetClientEyePosition(client, flPos);
-				GetAngleVectors(flAng, NULL_VECTOR, vLeft, NULL_VECTOR);
-				flPos[0] += (vLeft[0] * -45);
-				flPos[1] += (vLeft[1] * -45);
-				flPos[2] += (vLeft[2] * -45);
+				flPos[0] += (vLeft[0] * -60);
+				flPos[1] += (vLeft[1] * -60);
+				flPos[2] += (vLeft[2] * -60);
 			}
 			case 2:
 			{
-				GetClientEyePosition(client, flPos);
-				GetAngleVectors(flAng, NULL_VECTOR, vLeft, NULL_VECTOR);
-				flPos[0] += (vLeft[0] * 45);
-				flPos[1] += (vLeft[1] * 45);
-				flPos[2] += (vLeft[2] * 45);
+				flPos[0] += (vLeft[0] * 60);
+				flPos[1] += (vLeft[1] * 60);
+				flPos[2] += (vLeft[2] * 60);
 			}
 		}
 		
@@ -1076,4 +1080,9 @@ stock void MeleeDare(int client)
 	AcceptEntityInput(client, "SpeakResponseConcept");
 	    
 	AcceptEntityInput(client, "ClearContext");
+}
+
+stock float linearTween(float t, float b, float c, float d) 
+{
+	return c * t / d + b;
 }

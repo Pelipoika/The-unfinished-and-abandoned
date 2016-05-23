@@ -179,7 +179,7 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 					Overlay(client, "effects/combine_binocoverlay");
 				}
 			}
-			case TFClass_DemoMan:
+			case TFClass_Pyro:
 			{
 				float flStartPos[3], flEyeAng[3], flForw[3];
 				GetClientEyePosition(client, flStartPos);
@@ -304,9 +304,11 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 					EmitSoundToAll("misc/cp_harbor_red_whistle.wav", client, _, _, _, 0.25);
 				
 				int iPrimary = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary);
-				TF2Attrib_SetByName(iPrimary, "fire rate bonus", 0.75);
+				TF2Attrib_SetByName(iPrimary, "fire rate bonus", 0.5);
+				
 				int iSecondary = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary);
-				TF2Attrib_SetByName(iSecondary, "fire rate bonus", 0.75);
+				TF2Attrib_SetByName(iSecondary, "fire rate bonus", 0.5);
+				
 				int iMelee = GetPlayerWeaponSlot(client, TFWeaponSlot_Melee);
 				TF2Attrib_SetByName(iMelee, "melee attack rate bonus", 0.5);
 				TF2Attrib_SetByName(iMelee, "Construction rate increased", 2.0);
@@ -361,6 +363,9 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		return Plugin_Continue;	
 	
 	if(g_bIsMvM && TF2_GetClientTeam(client) == TFTeam_Blue)
+		return Plugin_Continue;
+	
+	if(TF2_GetClientTeam(client) != TFTeam_Blue && TF2_GetClientTeam(client) != TFTeam_Red)
 		return Plugin_Continue;
 	
 	int iDmg;
@@ -552,14 +557,14 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				case TFClass_Engineer:	Format(strProgressBar, sizeof(strProgressBar), "MOLTEN CORE");
 				case TFClass_Medic:		Format(strProgressBar, sizeof(strProgressBar), "RESURRECT");
 				case TFClass_Heavy:		Format(strProgressBar, sizeof(strProgressBar), "SHIELD");
-				case TFClass_DemoMan:	Format(strProgressBar, sizeof(strProgressBar), "GRAVITON SURGE");
+				case TFClass_Pyro:		Format(strProgressBar, sizeof(strProgressBar), "GRAVITON SURGE");
 				case TFClass_Spy:		Format(strProgressBar, sizeof(strProgressBar), "DEADEYE");			//TODO: shoots every enemy in his line of sight. The weaker his targets are, the faster he’ll line up a killshot.
 				case TFClass_Sniper:	Format(strProgressBar, sizeof(strProgressBar), "GRAPPLING HOOK");
 				case TFClass_Soldier:	Format(strProgressBar, sizeof(strProgressBar), "BARRAGE");
 				default:				Format(strProgressBar, sizeof(strProgressBar), "Not implemented");
 			}
 			
-			Format(strProgressBar, sizeof(strProgressBar), "%s\n[H]", strProgressBar);
+			Format(strProgressBar, sizeof(strProgressBar), "%s\n[ACTION SLOT KEY]", strProgressBar);
 		}
 		else
 		{
@@ -567,7 +572,15 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				Format(strProgressBar, sizeof(strProgressBar), "%s|", strProgressBar);
 		}
 		
-		SetHudTextParams(-1.0, 1.0, 0.1, 0, 255, 0, 0, 0, 0.0, 0.0, 0.0);
+		if(g_bIsMvM)
+		{
+			if(class == TFClass_Engineer)
+				SetHudTextParams(0.17, 0.04, 0.1, 0, 255, 0, 0, 0, 0.0, 0.0, 0.0);
+			else
+				SetHudTextParams(0.04, 0.04, 0.1, 0, 255, 0, 0, 0, 0.0, 0.0, 0.0);
+		}
+		else
+			SetHudTextParams(-1.0, 1.0, 0.1, 0, 255, 0, 0, 0, 0.0, 0.0, 0.0);
 		ShowSyncHudText(client, g_hHudInfo, "%.0f%%\n%s", flPercentage, strProgressBar);
 	}
 	
@@ -602,15 +615,71 @@ void EndAbilities(int client)
 			
 			StopSound(client, SNDCHAN_AUTO, ENGINE_LOOP);
 			
+			Address pAttrib = Address_Null;
+			float flValue = 0.0;
+				
 			int iPrimary = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary);
-			TF2Attrib_SetByName(iPrimary, "fire rate bonus", 1.0);
+			pAttrib = TF2Attrib_GetByName(iPrimary, "fire rate bonus");
+			if(pAttrib != Address_Null)
+			{
+				flValue = TF2Attrib_GetValue(pAttrib);
+				TF2Attrib_SetValue(pAttrib, flValue + 0.5);
+
+				flValue = TF2Attrib_GetValue(pAttrib);
+				if(flValue == 1.0)
+				{
+					TF2Attrib_RemoveByName(iPrimary, "fire rate bonus");
+				}
+				
+				TF2Attrib_ClearCache(iPrimary);
+			}
 			
 			int iSecondary = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary);
-			TF2Attrib_SetByName(iSecondary, "fire rate bonus", 1.0);
+			pAttrib = TF2Attrib_GetByName(iSecondary, "fire rate bonus");
+			if(pAttrib != Address_Null)
+			{
+				flValue = TF2Attrib_GetValue(pAttrib);
+				TF2Attrib_SetValue(pAttrib, flValue + 0.5);
+				
+				flValue = TF2Attrib_GetValue(pAttrib);
+				if(flValue == 1.0)
+				{
+					TF2Attrib_RemoveByName(iSecondary, "fire rate bonus");
+				}
+				
+				TF2Attrib_ClearCache(iSecondary);
+			}
 			
 			int iMelee = GetPlayerWeaponSlot(client, TFWeaponSlot_Melee);
-			TF2Attrib_SetByName(iMelee, "melee attack rate bonus", 1.0);
-			TF2Attrib_SetByName(iMelee, "Construction rate increased", 1.0);
+			pAttrib = TF2Attrib_GetByName(iMelee, "melee attack rate bonus");
+			if(pAttrib != Address_Null)
+			{
+				flValue = TF2Attrib_GetValue(pAttrib);
+				TF2Attrib_SetValue(pAttrib, flValue + 0.5);
+				
+				flValue = TF2Attrib_GetValue(pAttrib);
+				if(flValue == 1.0)
+				{
+					TF2Attrib_RemoveByName(iMelee, "melee attack rate bonus");
+				}
+				
+				TF2Attrib_ClearCache(iMelee);
+			}
+			
+			pAttrib = TF2Attrib_GetByName(iMelee, "Construction rate increased");
+			if(pAttrib != Address_Null)
+			{
+				flValue = TF2Attrib_GetValue(pAttrib);
+				TF2Attrib_SetValue(pAttrib, flValue - 1.0);
+				
+				flValue = TF2Attrib_GetValue(pAttrib);
+				if(flValue == 1.0)
+				{
+					TF2Attrib_RemoveByName(iMelee, "Construction rate increased");
+				}
+				
+				TF2Attrib_ClearCache(iMelee);
+			}
 		}
 		case TFClass_Spy:
 		{
@@ -715,6 +784,7 @@ int CreateLauncher(int client, float flPos[3], float flAng[3])
 	DispatchKeyValueVector(ent, "origin", flPos);
 	DispatchKeyValueVector(ent, "angles", flAng);
 	DispatchKeyValue(ent, "ModelOverride", "models/weapons/w_models/w_rocket_airstrike/w_rocket_airstrike.mdl");
+//	DispatchKeyValue(ent, "ModelOverride", "models/buildables/sentry3_rockets.mdl");
 	DispatchKeyValue(ent, "WeaponType", "0");
 	DispatchKeyValue(ent, "SpeedMin", "600");
 	DispatchKeyValue(ent, "SpeedMax", "1100");
@@ -725,7 +795,7 @@ int CreateLauncher(int client, float flPos[3], float flAng[3])
 	
 	SetEntPropEnt(ent, Prop_Send, "m_hOwnerEntity", client);
 
-	CreateTimer(0.2, Timer_FireRocket, EntIndexToEntRef(ent), TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+	CreateTimer(0.15, Timer_FireRocket, EntIndexToEntRef(ent), TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 	
 	SetVariantString("OnUser1 !self:ClearParent::2.95:1");
 	AcceptEntityInput(ent, "AddOutput");
@@ -962,8 +1032,6 @@ public Action Timer_FireRocket(Handle timer, int iRef)
 		GetClientEyePosition(client, flPos);
 		GetAngleVectors(flAng, NULL_VECTOR, vLeft, NULL_VECTOR);
 		
-		flPos[2] -= GetRandomFloat(0.0, 42.0);
-		
 		switch(iLauncher)
 		{
 			case 1:
@@ -979,6 +1047,8 @@ public Action Timer_FireRocket(Handle timer, int iRef)
 				flPos[2] += (vLeft[2] * 60);
 			}
 		}
+		
+		flPos[2] -= GetRandomFloat(-(flMaxs[2] / 2), flMaxs[2] / 2);
 		
 		DispatchKeyValueVector(ent, "origin", flPos);
 		DispatchKeyValueVector(ent, "angles", flAng);

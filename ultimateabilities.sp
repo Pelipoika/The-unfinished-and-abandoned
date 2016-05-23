@@ -73,6 +73,7 @@ public Plugin myinfo =
 public void OnPluginStart()
 {
 	HookEvent("player_hurt", Event_PlayerHurt);
+	HookEvent("npc_hurt", Event_NPCHurt);
 	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
 	
 	g_hHudInfo = CreateHudSynchronizer();
@@ -729,6 +730,7 @@ void OnGravitonThink(int iEnt)
 {
 	float flPos[3];
 	GetEntPropVector(iEnt, Prop_Send, "m_vecOrigin", flPos);
+	flPos[2] += 15.0;
 	
 	int iClient = GetEntPropEnt(iEnt, Prop_Data, "m_hThrower");
 	
@@ -1014,6 +1016,20 @@ public void Event_PlayerHurt(Event event, const char[] name, bool dontBroadcast)
 		
 	//	PrintCenterText(iAttacker, "iVictim %N\niHealth %i\niAttacker %N\niDamageAmount %i\nTotal Damage Done: %i", iVictim, iHealth, iAttacker, iDamageAmount, g_iDamageDone[iAttacker]);
 	}
+}
+
+public void Event_NPCHurt(Event event, const char[] name, bool dontBroadcast)
+{
+/*	Server event "npc_hurt", Tick 44860:
+	- "entindex" = "457"
+	- "health" = "6274"
+	- "attacker_player" = "68"
+	- "weaponid" = "25"
+	- "damageamount" = "6"
+	- "crit" = "0"
+	- "boss" = "0"*/
+	
+	int iAttacker = 
 }
 
 public Action Timer_FireRocket(Handle timer, int iRef)

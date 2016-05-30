@@ -1029,7 +1029,13 @@ public void Event_NPCHurt(Event event, const char[] name, bool dontBroadcast)
 	- "crit" = "0"
 	- "boss" = "0"*/
 	
-	int iAttacker = 
+	int iAttacker = GetClientOfUserId(event.GetInt("attacker_player"));
+	int iDmg = event.GetInt("damageamount");
+	
+	if(iAttacker > 0 && iAttacker <= MaxClients && IsClientInGame(iAttacker) && !g_bAbilityActive[iAttacker])
+	{
+		g_iDamageDone[iAttacker] += iDmg;
+	}
 }
 
 public Action Timer_FireRocket(Handle timer, int iRef)

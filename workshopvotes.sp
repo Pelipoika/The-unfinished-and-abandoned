@@ -3,7 +3,7 @@
 
 bool g_bCanChangeMap = true;
 int g_iSelectPos[MAXPLAYERS+1];
-char g_strSelectGamemode[MAXPLAYERS+1][8];
+char g_strSelectGamemode[MAXPLAYERS+1][32];
 
 ArrayList g_hMaps;
 Menu g_hGamemodeMenu;
@@ -114,7 +114,7 @@ stock void DisplayMapMenu(int client, const char[] gamemode, int page = 0)
 	{
 		char strGameMode[32]; 
 		g_hMaps.GetString(i + 4, strGameMode, sizeof(strGameMode));
-		
+
 		if(StrEqual(gamemode, strGameMode) || StrEqual(gamemode, ""))
 		{
 			char display[526], rating[18];
@@ -173,7 +173,7 @@ public int MenuGamemodeHandler(Handle menu, MenuAction action, int param1, int p
 {
 	if (action == MenuAction_Select)
 	{
-		char strGamemode[8];
+		char strGamemode[32];
 		GetMenuItem(menu, param2, strGamemode, sizeof(strGamemode));
 		
 		DisplayMapMenu(param1, strGamemode);
@@ -196,7 +196,7 @@ public int Menu_Maps(Handle menu, MenuAction action, int param1, int param2)
 
 			g_iSelectPos[param1] = GetMenuSelectionPosition();
 			
-			Format(g_strSelectGamemode[param1], 8, "%s", strGamemode);
+			Format(g_strSelectGamemode[param1], 32, "%s", strGamemode);
 			
 			DisplayMapInfoMenu(param1, strID, strRating, strMaker, strMapname, strGamemode);
 		}
@@ -223,7 +223,7 @@ public int Menu_MapDo(Handle menu, MenuAction action, int param1, int param2)
 		FindMaker(strID, strMaker, sizeof(strMaker));
 		FindMapname(strID, strMapname, sizeof(strMapname));
 		FindGamemode(strID, strGamemode, sizeof(strGamemode));
-		
+	
 		switch(param2)
 		{
 			case 0:
@@ -262,7 +262,7 @@ public int Menu_MapDo(Handle menu, MenuAction action, int param1, int param2)
 stock void Workshop_DownloadAndChangeMap(int iWorkshopID)
 {
 	ServerCommand("tf_workshop_map_sync %i", iWorkshopID);
-				
+	
 	CreateTimer(2.0, Timer_CheckDownload, iWorkshopID, TIMER_FLAG_NO_MAPCHANGE);
 
 	g_bCanChangeMap = false;

@@ -10,7 +10,7 @@
 
 #define DMG_SCOUT    300
 #define DMG_SOLDIER  2000
-#define DMG_PYRO     100
+#define DMG_PYRO     1000
 #define DMG_DEMO     2000
 #define DMG_HEAVY    2000
 #define DMG_ENGINEER 2000
@@ -368,7 +368,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	
 	if(TF2_GetClientTeam(client) != TFTeam_Blue && TF2_GetClientTeam(client) != TFTeam_Red)
 		return Plugin_Continue;
-	
+
 	int iDmg;
 	TFClassType class = TF2_GetPlayerClass(client);
 	switch(class)
@@ -428,38 +428,41 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		}
 		else
 		{
-			float flPos[3];
-			GetClientAbsOrigin(client, flPos);
-		
-			for(int i = 0; i < g_hPositions[client].Length; i++)
+			if(g_hPositions[client] == null)
 			{
-				float flLastPos[3], flAng[3];
-				g_hPositions[client].GetArray(i, flLastPos);
-				g_hAngles[client].GetArray(i, flAng);
-				
-				float flVecTo[3];
-				MakeVectorFromPoints(flPos, flLastPos, flVecTo);
-				NormalizeVector(flVecTo, flVecTo);
-				ScaleVector(flVecTo, 600.0);
-				
-				TeleportEntity(client, NULL_VECTOR, flAng, flVecTo);
-				
-				if(GetVectorDistance(flPos, flLastPos) <= 32.0)
-				{
-				//	TE_SetupBeamPoints(flPos, flLastPos, g_iPathLaserModelIndex, g_iPathLaserModelIndex, 0, 30, 10.0, 2.0, 2.0, 2, 0.0, {255, 0, 255, 255}, 30);
-				//	TE_SendToAll();
-				
-					SetEntProp(client, Prop_Send, "m_iHealth", g_hHealthPoints[client].Get(i));
-					
-					g_hPositions[client].Erase(i);
-					g_hAngles[client].Erase(i);
-					g_hHealthPoints[client].Erase(i);
-				}
-			}
+				float flPos[3];
+				GetClientAbsOrigin(client, flPos);
 			
-			if(g_hPositions[client].Length <= 0)
-			{
-				EndAbilities(client);
+				for(int i = 0; i < g_hPositions[client].Length; i++)
+				{
+					float flLastPos[3], flAng[3];
+					g_hPositions[client].GetArray(i, flLastPos);
+					g_hAngles[client].GetArray(i, flAng);
+					
+					float flVecTo[3];
+					MakeVectorFromPoints(flPos, flLastPos, flVecTo);
+					NormalizeVector(flVecTo, flVecTo);
+					ScaleVector(flVecTo, 600.0);
+					
+					TeleportEntity(client, NULL_VECTOR, flAng, flVecTo);
+					
+					if(GetVectorDistance(flPos, flLastPos) <= 32.0)
+					{
+					//	TE_SetupBeamPoints(flPos, flLastPos, g_iPathLaserModelIndex, g_iPathLaserModelIndex, 0, 30, 10.0, 2.0, 2.0, 2, 0.0, {255, 0, 255, 255}, 30);
+					//	TE_SendToAll();
+					
+						SetEntProp(client, Prop_Send, "m_iHealth", g_hHealthPoints[client].Get(i));
+						
+						g_hPositions[client].Erase(i);
+						g_hAngles[client].Erase(i);
+						g_hHealthPoints[client].Erase(i);
+					}
+				}
+				
+				if(g_hPositions[client].Length <= 0)
+				{
+					EndAbilities(client);
+				}
 			}
 		}
 	}
@@ -837,7 +840,7 @@ public Action TF2_CalcIsAttackCritical(int client, int weapon, char[] weaponname
 					
 					if(g_bLocked[client] && g_iTarget[client] != -1)
 					{
-						SDKHooks_TakeDamage(g_iTarget[client], client, client, 700.0, DMG_BULLET|DMG_CRIT, weapon);
+						SDKHooks_TakeDamage(g_iTarget[client], client, client, 500.0, DMG_BULLET|DMG_CRIT, weapon);
 					}
 				}
 			}

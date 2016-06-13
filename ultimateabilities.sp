@@ -428,7 +428,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		}
 		else
 		{
-			if(g_hPositions[client] == null)
+			if(g_hPositions[client] != null)
 			{
 				float flPos[3];
 				GetClientAbsOrigin(client, flPos);

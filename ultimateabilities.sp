@@ -603,14 +603,17 @@ void EndAbilities(int client)
 		
 			EmitSoundToAll("replay/rendercomplete.wav", client);
 			EmitSoundToClient(client, "replay/rendercomplete.wav");
-
-			g_hPositions[client].Clear();
-			g_hAngles[client].Clear();
-			g_hHealthPoints[client].Clear();
 			
-			delete g_hPositions[client];
-			delete g_hAngles[client];
-			delete g_hHealthPoints[client];
+			if(g_hPositions[client] != null)
+			{
+				g_hPositions[client].Clear();
+				g_hAngles[client].Clear();
+				g_hHealthPoints[client].Clear();
+				
+				delete g_hPositions[client];
+				delete g_hAngles[client];
+				delete g_hHealthPoints[client];
+			}
 		}
 		case TFClass_Engineer:
 		{

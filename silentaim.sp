@@ -94,12 +94,17 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		char strTargets[32 * MAX_NAME_LENGTH];
 		for (int i = 0; i < iPlayercount; i++)
 		{
+			float flTPos[3], flPos[3];
+			GetClientAbsOrigin(iPlayerarray[i], flTPos);
+			GetClientEyePosition(client, flPos);
+		
+			float flDistance = GetVectorDistance(flPos, flTPos) * 0.0254;
 			int target = iPlayerarray[i];
-			Format(strTargets, sizeof(strTargets), "%s\n%N", strTargets, target);
+			Format(strTargets, sizeof(strTargets), "%s\n%N - %.0f", strTargets, target, flDistance);
 		}
 		
-		SetHudTextParams(-0.55, 0.55, 0.1, 255, 0, 0, 0, 0, 0.0, 0.0, 0.0);
-		ShowSyncHudText(client, g_hHudInfo2, "VISIBLE:%s", strTargets);
+		SetHudTextParams(-0.6, 0.55, 0.1, 255, 0, 0, 0, 0, 0.0, 0.0, 0.0);
+		ShowSyncHudText(client, g_hHudInfo2, "%i VISIBLE:%s", iPlayercount, strTargets);
 	}
 
 	if(!(buttons & IN_ATTACK))
@@ -109,7 +114,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	if(iTarget != -1)
 	{
 		SetHudTextParams(0.55, 0.55, 0.1, 0, 255, 0, 0, 0, 0.0, 0.0, 0.0);
-		ShowSyncHudText(client, g_hHudInfo, "[AIMING AT: %N]", iTarget);
+		ShowSyncHudText(client, g_hHudInfo, "[AIMING AT: %N [%i HP]", iTarget, GetEntProp(iTarget, Prop_Send, "m_iHealth"));
 	
 		float flPPos[3], flTPos[3];
 		GetClientEyePosition(client, flPPos);
@@ -175,6 +180,7 @@ stock bool TF2_IsKillable(int client)
 	if(TF2_IsPlayerInCondition(client, TFCond_Ubercharged) 
 	|| TF2_IsPlayerInCondition(client, TFCond_UberchargedHidden) 
 	|| TF2_IsPlayerInCondition(client, TFCond_UberchargedCanteen)
+	|| TF2_IsPlayerInCondition(client, TFCond_Bonked)
 	|| GetEntProp(client, Prop_Data, "m_takedamage") != 2)
 	{
 		return false;

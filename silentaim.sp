@@ -47,6 +47,8 @@ public Action Command_Aimbot(int client, int argc)
 			PrintToChat(client, "Aimbot: ON");
 		}
 	}
+	
+	return Plugin_Handled;
 }
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
@@ -135,7 +137,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	return Plugin_Changed;
 }
 
-stock int FindTargetInViewCone(int iViewer, float iOffz = 00.0)
+stock int FindTargetInViewCone(int iViewer, float iOffz = 0.0)
 {
 	float flPos[3];
 	GetClientEyePosition(iViewer, flPos);

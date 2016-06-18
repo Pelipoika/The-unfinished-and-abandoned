@@ -251,8 +251,8 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 			int iGoalAreaIndex  = NavMesh_GetNearestArea(flPPos, true, 10000.0, true);
 			
 			Handle hAreas = NavMesh_GetAreas();
-			if (hAreas == INVALID_HANDLE) return Plugin_Handled;
-			if (iStartAreaIndex == -1 || iGoalAreaIndex == -1) return Plugin_Handled;
+			if (hAreas == INVALID_HANDLE) return Plugin_Continue;
+			if (iStartAreaIndex == -1 || iGoalAreaIndex == -1) return Plugin_Continue;
 			
 			float flGoalPos[3];
 			NavMeshArea_GetCenter(iGoalAreaIndex, flGoalPos);
@@ -419,8 +419,15 @@ stock int TF2_GetPlayerThatNeedsHealing(int client)
 	//Nobody needs healing, choose random player
 	if(iBestTarget <= 0 && iPlayercount > 0)
 	{
-		if(g_iLastPatient[client] > 0 && IsClientInGame(g_iLastPatient[client]) && IsPlayerAlive(g_iLastPatient[client]))
-			iBestTarget = g_iLastPatient[client];
+		int iLastPatient = g_iLastPatient[client];
+		if(iLastPatient > 0 && IsClientInGame(iLastPatient) && IsPlayerAlive(iLastPatient))
+		{
+			iBestTarget = iLastPatient;
+		}
+		else
+		{
+			g_iLastPatient[client] = GetRandomInt(0, iPlayercount);
+		}
 	}
 	
 	return iBestTarget;

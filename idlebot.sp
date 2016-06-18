@@ -84,8 +84,15 @@ public Action Command_Idle(int client, int argc)
 
 public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVel[3], float fAng[3], int &iWeapon)
 {
-	if(IsFakeClient(client) || !IsPlayerAlive(client) || !g_bAFK[client])
+	if(IsFakeClient(client) || !g_bAFK[client])
 		return Plugin_Continue;
+		
+	if(!IsPlayerAlive(client))
+	{
+		//This will bug out once we spawn and break out pathing
+		flNextStuckCheck[client] = GetGameTime() + 5.0;
+		return Plugin_Continue;
+	}
 	
 	if(TF2_GetPlayerClass(client) != TFClass_Medic)
 	{
@@ -194,6 +201,13 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 			//Navigate our path
 			if(g_iTargetNode[client] >= 0 && g_iTargetNode[client] < g_hPositions[client].Length)
 			{
+				//Crouch jump
+				if(GetEntProp(client, Prop_Send, "m_bJumping"))
+				{
+					iButtons |= IN_DUCK
+					bChanged = true;
+				}
+			
 				if(iHealTarget != iPatient)
 				{
 					if(flNextStuckCheck[client] <= GetGameTime())
@@ -249,6 +263,8 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 					NormalizeVector(fVel, fVel);
 					ScaleVector(fVel, 450.0);
 					
+					bChanged = true;
+					
 					flGoPos[2] = flPos[2];
 					float flNodeDist = GetVectorDistance(flGoPos, flPos);					
 
@@ -259,6 +275,63 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 						
 						g_iTargetNode[client]--;
 					}
+				}
+				else
+				{
+					//Position ourselves behind out patient if we have LOS to them and are healing them
+					if(bHasLOS && iHealTarget > 0 && iHealTarget <= MaxClients && IsClientInGame(iHealTarget))
+					{
+						float flPosition[3], flAngles[3];
+						GetClientAbsOrigin(iHealTarget, flPosition);
+						GetClientEyeAngles(iHealTarget, flAngles);
+						flAngles[0] = 0.0;
+						
+						float vForward[3];
+						GetAngleVectors(flAngles, vForward, NULL_VECTOR, NULL_VECTOR);
+						flPosition[0] -= (vForward[0] * 90);
+						flPosition[1] -= (vForward[1] * 90);
+						flPosition[2] -= (vForward[2] * 90);
+						
+						//Show a giant vertical beam at our goal node
+						TE_SetupBeamPoints(flPos,
+							flPosition,
+							g_iPathLaserModelIndex,
+							g_iPathLaserModelIndex,
+							0,
+							30,
+							0.1,
+							5.0,
+							5.0,
+							1, 
+							0.0,
+							{255, 0, 255, 255},
+							30);
+							
+						TE_SendToClient(client);
+						
+						float flGoalDist = GetVectorDistance(flPosition, flPos);
+						if(flGoalDist >= 40.0)
+						{							
+							//Perform magic to position ourselves behind our patient
+							float newmove[3];
+							SubtractVectors(flPosition, flPos, newmove);
+							
+							newmove[1] = -newmove[1];
+							
+							float sin = Sine(fAng[1] * FLOAT_PI / 180.0);
+							float cos = Cosine(fAng[1] * FLOAT_PI / 180.0);						
+							
+							fVel[0] = cos * newmove[0] - sin * newmove[1];
+							fVel[1] = sin * newmove[0] + cos * newmove[1];
+							
+							NormalizeVector(fVel, fVel);
+							ScaleVector(fVel, 450.0);
+							
+							bChanged = true;
+						}
+					}
+				
+					flNextStuckCheck[client] = GetGameTime() + 5.0;
 				}
 			}
 		}

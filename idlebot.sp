@@ -124,12 +124,12 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 		
 		delete TraceRay;
 		
+		int iHealTarget = -1;
+		
 		//Check line of sigh
 		bool bHasLOS = Client_Cansee(client, iPatient);
 		if(bHasLOS)
 		{
-			int iHealTarget = -1;
-			
 			//If we can see our patient, switch to medigun if not active
 			int iSecondary = GetPlayerWeaponSlot(client, TFWeaponSlot_Secondary);
 			if(IsValidEntity(iSecondary))
@@ -158,16 +158,8 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 			float flAimDir[3];
 			MakeVectorFromPoints(flPos, flPPos, flAimDir);
 			GetVectorAngles(flAimDir, flAimDir);
-			
-			PrintCenterText(client, "iHealTarget = %i\niPatient = %i", iHealTarget, iPatient);
-			
+
 			TeleportEntity(client, NULL_VECTOR, flAimDir, NULL_VECTOR);
-			
-			if(iHealTarget != iPatient && iHealTarget == -1)
-			{
-				iButtons |= IN_ATTACK;
-				bChanged = true;
-			}
 			
 			if(iHealTarget != iPatient)
 			{
@@ -179,7 +171,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 		if(g_hPositions[client] != null)
 		{
 			SetHudTextParams(-0.6, 0.55, 0.1, 255, 255, 255, 255, 0, 0.0, 0.0, 0.0);
-			ShowSyncHudText(client, g_hHudInfo, "Healing %N\nLine of sight: %s\nNodes: %i\nTargetNode: %i\nIN_ATTACK: %s", 
+			ShowSyncHudText(client, g_hHudInfo, "Healing: %N\nLine of sight: %s\nNodes: %i\nTargetNode: %i\nIN_ATTACK: %s", 
 				iPatient, 
 				bHasLOS ? "Yes" : "No", 
 				g_hPositions[client].Length, 
@@ -189,51 +181,54 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 			//Navigate our path
 			if(g_iTargetNode[client] >= 0 && g_iTargetNode[client] < g_hPositions[client].Length)
 			{
-				GetClientAbsOrigin(client, flPos);
-			
-				float flGoPos[3];
-				g_hPositions[client].GetArray(g_iTargetNode[client], flGoPos);
+				if(iHealTarget != iPatient)
+				{			
+					GetClientAbsOrigin(client, flPos);
 				
-				float flToPos[3];
-				flToPos[0] = flGoPos[0];
-				flToPos[1] = flGoPos[1];
-				flToPos[2] = flGoPos[2];
-				
-				flToPos[2] += 80.0;
-				
-				TE_SetupBeamPoints(flGoPos,
-					flToPos,
-					g_iPathLaserModelIndex,
-					g_iPathLaserModelIndex,
-					0,
-					30,
-					0.1,
-					5.0,
-					5.0,
-					5, 
-					0.0,
-					{255, 0, 0, 255},
-					30);
+					float flGoPos[3];
+					g_hPositions[client].GetArray(g_iTargetNode[client], flGoPos);
 					
-				TE_SendToClient(client);
-				
-				float flNodeDist = GetVectorDistance(flGoPos, flPos);
-				float newmove[3];
-		
-				SubtractVectors(flGoPos, flPos, newmove);
-				NormalizeVector(newmove, newmove);
-				ScaleVector(newmove, 450.0);
-				
-				newmove[1] = -newmove[1];
-				
-				float sin = Sine(fAng[1] * FLOAT_PI / 180.0);
-				float cos = Cosine(fAng[1] * FLOAT_PI / 180.0);
-				fVel[0] = cos * newmove[0] - sin * newmove[1];
-				fVel[1] = sin * newmove[0] + cos * newmove[1];
-				
-				if(flNodeDist <= 25.0)
-				{
-					g_iTargetNode[client]--;
+					float flToPos[3];
+					flToPos[0] = flGoPos[0];
+					flToPos[1] = flGoPos[1];
+					flToPos[2] = flGoPos[2];
+					
+					flToPos[2] += 80.0;
+					
+					TE_SetupBeamPoints(flGoPos,
+						flToPos,
+						g_iPathLaserModelIndex,
+						g_iPathLaserModelIndex,
+						0,
+						30,
+						0.1,
+						5.0,
+						5.0,
+						5, 
+						0.0,
+						{255, 0, 0, 255},
+						30);
+						
+					TE_SendToClient(client);
+					
+					float flNodeDist = GetVectorDistance(flGoPos, flPos);
+					float newmove[3];
+			
+					SubtractVectors(flGoPos, flPos, newmove);
+					NormalizeVector(newmove, newmove);
+					ScaleVector(newmove, 450.0);
+					
+					newmove[1] = -newmove[1];
+					
+					float sin = Sine(fAng[1] * FLOAT_PI / 180.0);
+					float cos = Cosine(fAng[1] * FLOAT_PI / 180.0);
+					fVel[0] = cos * newmove[0] - sin * newmove[1];
+					fVel[1] = sin * newmove[0] + cos * newmove[1];
+					
+					if(flNodeDist <= 25.0)
+					{
+						g_iTargetNode[client]--;
+					}
 				}
 			}
 		}
@@ -426,7 +421,7 @@ stock int TF2_GetPlayerThatNeedsHealing(int client)
 		}
 		else
 		{
-			g_iLastPatient[client] = GetRandomInt(0, iPlayercount);
+			g_iLastPatient[client] = iPlayerarray[GetRandomInt(0, iPlayercount-1)];
 		}
 	}
 	

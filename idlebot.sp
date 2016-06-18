@@ -12,6 +12,7 @@ bool g_bAFK[MAXPLAYERS + 1];
 int g_iTargetNode[MAXPLAYERS + 1];
 int g_iLastPatient[MAXPLAYERS + 1];
 float flNextPathUpdate[MAXPLAYERS + 1];
+float flNextStuckCheck[MAXPLAYERS + 1];
 
 Handle g_hHudInfo;
 
@@ -72,6 +73,7 @@ public Action Command_Idle(int client, int argc)
 	}
 	else
 	{
+		flNextStuckCheck[client] = GetGameTime() + 5.0;
 		g_iLastPatient[client] = -1;
 		g_bAFK[client] = true;
 		ReplyToCommand(client, "[AFK Bot] On");
@@ -188,7 +190,16 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 			if(g_iTargetNode[client] >= 0 && g_iTargetNode[client] < g_hPositions[client].Length)
 			{
 				if(iHealTarget != iPatient)
-				{			
+				{
+					if(flNextStuckCheck[client] <= GetGameTime())
+					{
+						PrintToChat(client, "Stuck. skipping a node...");
+						flNextStuckCheck[client] = GetGameTime() + 5.0;
+						flNextPathUpdate[client] = GetGameTime() + 5.5;
+						
+						g_iTargetNode[client]--;
+					}
+				
 					GetClientAbsOrigin(client, flPos);
 				
 					float flGoPos[3];
@@ -217,13 +228,10 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 						
 					TE_SendToClient(client);
 					
-					float flNodeDist = GetVectorDistance(flGoPos, flPos);
 					float newmove[3];
 			
 					SubtractVectors(flGoPos, flPos, newmove);
-					NormalizeVector(newmove, newmove);
-					ScaleVector(newmove, 450.0);
-					
+
 					newmove[1] = -newmove[1];
 					
 					float sin = Sine(fAng[1] * FLOAT_PI / 180.0);
@@ -235,8 +243,15 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 					NormalizeVector(fVel, fVel);
 					ScaleVector(fVel, 450.0);
 					
+					float flNodeDist = GetVectorDistance(flGoPos, flPos);
+					
+					flGoPos[2] = flPos[2];
+					
 					if(flNodeDist <= 25.0)
 					{
+						//Moving between nodes shouldnt take more than 5 seconds
+						flNextStuckCheck[client] = GetGameTime() + 5.0;
+						
 						g_iTargetNode[client]--;
 					}
 				}

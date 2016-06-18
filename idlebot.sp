@@ -72,6 +72,7 @@ public Action Command_Idle(int client, int argc)
 	}
 	else
 	{
+		g_iLastPatient[client] = -1;
 		g_bAFK[client] = true;
 		ReplyToCommand(client, "[AFK Bot] On");
 	}
@@ -161,7 +162,12 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 
 			TeleportEntity(client, NULL_VECTOR, flAimDir, NULL_VECTOR);
 			
-			if(iHealTarget != iPatient)
+			if(iHealTarget == iPatient)
+			{
+				iButtons &= ~IN_ATTACK;
+				bChanged = true;
+			}
+			else if(iHealTarget != iPatient)
 			{
 				iButtons |= IN_ATTACK;
 				bChanged = true;
@@ -222,8 +228,12 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 					
 					float sin = Sine(fAng[1] * FLOAT_PI / 180.0);
 					float cos = Cosine(fAng[1] * FLOAT_PI / 180.0);
+					
 					fVel[0] = cos * newmove[0] - sin * newmove[1];
 					fVel[1] = sin * newmove[0] + cos * newmove[1];
+					
+					NormalizeVector(fVel, fVel);
+					ScaleVector(fVel, 450.0);
 					
 					if(flNodeDist <= 25.0)
 					{
@@ -242,8 +252,8 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 		 	flPos[2] += 15.0;
 		 	flPPos[2] += 15.0;
 		 
-			int iStartAreaIndex = NavMesh_GetNearestArea(flPos, true, 10000.0, true);
-			int iGoalAreaIndex  = NavMesh_GetNearestArea(flPPos, true, 10000.0, true);
+			int iStartAreaIndex = NavMesh_GetNearestArea(flPos, false, 4500.0, true);
+			int iGoalAreaIndex  = NavMesh_GetNearestArea(flPPos, false, 4500.0, true);
 			
 			Handle hAreas = NavMesh_GetAreas();
 			if (hAreas == INVALID_HANDLE) return Plugin_Continue;
@@ -253,7 +263,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 			NavMeshArea_GetCenter(iGoalAreaIndex, flGoalPos);
 			
 			float flMaxPathLength = 0.0;
-			float flMaxStepSize = 0.0;
+			float flMaxStepSize = 40.0;
 			int iClosestAreaIndex = 0;
 			
 			NavMesh_BuildPath(iStartAreaIndex, 

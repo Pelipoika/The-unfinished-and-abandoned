@@ -137,6 +137,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 			int iSecondary = GetPlayerWeaponSlot(client, TFWeaponSlot_Secondary);
 			if(IsValidEntity(iSecondary))
 			{
+				//Get our mediguns healtarget to use for later
 				iHealTarget = GetEntPropEnt(iSecondary, Prop_Send, "m_hHealingTarget");
 		
 				int iAWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
@@ -154,22 +155,26 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 				}
 			}
 			
+			//We want to aim at the center of the client
 			GetClientAbsOrigin(iPatient, flPPos);
 			GetClientAbsOrigin(client, flPos);
 			flPPos[2] -= flMaxs[2] / 2;
 			
+			//Aim at our patient
 			float flAimDir[3];
 			MakeVectorFromPoints(flPos, flPPos, flAimDir);
 			GetVectorAngles(flAimDir, flAimDir);
 
 			TeleportEntity(client, NULL_VECTOR, flAimDir, NULL_VECTOR);
 			
+			//Try to switch medigun targets
 			if(iHealTarget == iPatient)
 			{
 				iButtons &= ~IN_ATTACK;
 				bChanged = true;
 			}
-			else if(iHealTarget != iPatient)
+			
+			if(iHealTarget != iPatient)
 			{
 				iButtons |= IN_ATTACK;
 				bChanged = true;
@@ -185,7 +190,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 				g_hPositions[client].Length, 
 				g_iTargetNode[client], 
 				iButtons & IN_ATTACK ? "Yes" : "No");
-
+			
 			//Navigate our path
 			if(g_iTargetNode[client] >= 0 && g_iTargetNode[client] < g_hPositions[client].Length)
 			{
@@ -212,6 +217,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 					
 					flToPos[2] += 80.0;
 					
+					//Show a giant vertical beam at our goal node
 					TE_SetupBeamPoints(flGoPos,
 						flToPos,
 						g_iPathLaserModelIndex,
@@ -228,8 +234,8 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 						
 					TE_SendToClient(client);
 					
+					//Perform magic to walk towards our goal node
 					float newmove[3];
-			
 					SubtractVectors(flGoPos, flPos, newmove);
 
 					newmove[1] = -newmove[1];
@@ -243,10 +249,9 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 					NormalizeVector(fVel, fVel);
 					ScaleVector(fVel, 450.0);
 					
-					float flNodeDist = GetVectorDistance(flGoPos, flPos);
-					
 					flGoPos[2] = flPos[2];
-					
+					float flNodeDist = GetVectorDistance(flGoPos, flPos);					
+
 					if(flNodeDist <= 25.0)
 					{
 						//Moving between nodes shouldnt take more than 5 seconds
@@ -267,8 +272,8 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 		 	flPos[2] += 15.0;
 		 	flPPos[2] += 15.0;
 		 
-			int iStartAreaIndex = NavMesh_GetNearestArea(flPos, false, 4500.0, true);
-			int iGoalAreaIndex  = NavMesh_GetNearestArea(flPPos, false, 4500.0, true);
+			int iStartAreaIndex = NavMesh_GetNearestArea(flPos, false, 1000.0, true);
+			int iGoalAreaIndex  = NavMesh_GetNearestArea(flPPos, false, 1000.0, true);
 			
 			Handle hAreas = NavMesh_GetAreas();
 			if (hAreas == INVALID_HANDLE) return Plugin_Continue;

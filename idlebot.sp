@@ -175,6 +175,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 			MakeVectorFromPoints(flPos, flPPos, flAimDir);
 			GetVectorAngles(flAimDir, flAimDir);
 
+			ClampAngle(flAimDir);
 			TeleportEntity(client, NULL_VECTOR, flAimDir, NULL_VECTOR);
 			
 			//Try to switch medigun targets
@@ -188,16 +189,59 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 				}	
 			}
 		}
+		else
+		{
+			//Nobody to heal, DM
+			int iEnemy = FindNearestEnemy(client, 1000.0);
+			if(iEnemy > 0)
+			{
+				//If we can see our patient, switch to medigun if not active
+				int iPrimary = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary);
+				if(IsValidEntity(iPrimary))
+				{
+					int iAWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+					if(IsValidEntity(iAWeapon))
+					{
+						int iSlot = GetSlotFromPlayerWeapon(client, iAWeapon);
+						if(iSlot != TFWeaponSlot_Primary)
+						{
+							char strClass[64];
+							GetEntityClassname(iPrimary, strClass, sizeof(strClass));
+							
+							FakeClientCommand(client, "use %s", strClass);
+							SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iPrimary);
+						}
+						else
+						{
+							//We want to aim at the center of the client
+							GetClientAbsOrigin(iEnemy, flPPos);
+							GetClientAbsOrigin(client, flPos);
+							flPPos[2] -= flMaxs[2] / 2;
+							
+							//Aim at our patient
+							float flAimDir[3];
+							MakeVectorFromPoints(flPos, flPPos, flAimDir);
+							GetVectorAngles(flAimDir, flAimDir);
+				
+							ClampAngle(flAimDir);
+							TeleportEntity(client, NULL_VECTOR, flAimDir, NULL_VECTOR);
+							
+							iButtons |= IN_ATTACK;
+							bChanged = true;
+						}
+					}
+				}				
+			}
+		}
 		
 		if(g_hPositions[client] != null)
 		{
 			SetHudTextParams(-0.6, 0.55, 0.1, 255, 255, 255, 255, 0, 0.0, 0.0, 0.0);
-			ShowSyncHudText(client, g_hHudInfo, "Healing: %N\nLine of sight: %s\nNodes: %i\nTargetNode: %i\nIN_ATTACK: %s", 
+			ShowSyncHudText(client, g_hHudInfo, "Healing: %N\nLine of sight: %s\nNodes: %i\nTargetNode: %i", 
 				iPatient, 
 				bHasLOS ? "Yes" : "No", 
 				g_hPositions[client].Length, 
-				g_iTargetNode[client], 
-				iButtons & IN_ATTACK ? "Yes" : "No");
+				g_iTargetNode[client]);
 			
 			//Navigate our path
 			if(g_iTargetNode[client] >= 0 && g_iTargetNode[client] < g_hPositions[client].Length)
@@ -465,7 +509,7 @@ stock int TF2_GetPlayerThatNeedsHealing(int client)
 	
 	for (int i = 1; i <= MaxClients; i++)
 	{
-		if(i != client && IsClientInGame(i) && IsPlayerAlive(i) && TF2_GetClientTeam(i) == team)
+		if(i != client && IsClientInGame(i) && IsPlayerAlive(i) && TF2_GetClientTeam(i) == team && TF2_IsHealable(i))
 		{
 			int iHealth = GetClientHealth(i);
 			int iMaxHealth = GetEntProp(iResource, Prop_Send, "m_iMaxHealth", _, i);
@@ -500,6 +544,71 @@ stock int TF2_GetPlayerThatNeedsHealing(int client)
 	return iBestTarget;
 }
 
+stock bool TF2_IsHealable(int client)
+{
+	if(TF2_IsPlayerInCondition(client, TFCond_DeadRingered)
+	|| TF2_IsPlayerInCondition(client, TFCond_Cloaked))
+	{
+		return false;
+	}
+	
+	return true;
+}
+
+stock int FindNearestEnemy(int iViewer, float flMaxDistance = 9999.0)
+{
+	float flPos[3];
+	GetClientEyePosition(iViewer, flPos);
+	
+	float flBestDistance = flMaxDistance;
+	int iBestTarget = -1;
+
+	for(int i = 1; i <= MaxClients; i++)
+	{
+		if(i != iViewer && IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) != GetClientTeam(iViewer) && TF2_IsKillable(i))
+		{
+			float flTPos[3];
+			GetClientAbsOrigin(i, flTPos);
+			
+			float flMaxs[3];
+			GetEntPropVector(i, Prop_Send, "m_vecMaxs", flMaxs);
+			flTPos[2] += flMaxs[2] / 2;
+			
+			TR_TraceRayFilter(flPos, flTPos, MASK_SHOT, RayType_EndPoint, AimTargetFilter, iViewer);
+			if(TR_DidHit())
+			{
+				int entity = TR_GetEntityIndex();
+				if(entity == i)
+				{
+					float flDistance = GetVectorDistance(flPos, flTPos);
+			
+					if(flDistance < flBestDistance)
+					{
+						flBestDistance = flDistance;
+						iBestTarget = i;
+					}
+				}
+			}
+		}
+	}
+
+	return iBestTarget;
+}
+
+stock bool TF2_IsKillable(int client)
+{
+	if(TF2_IsPlayerInCondition(client, TFCond_Ubercharged) 
+	|| TF2_IsPlayerInCondition(client, TFCond_UberchargedHidden) 
+	|| TF2_IsPlayerInCondition(client, TFCond_UberchargedCanteen)
+	|| TF2_IsPlayerInCondition(client, TFCond_Bonked)
+	|| GetEntProp(client, Prop_Data, "m_takedamage") != 2)
+	{
+		return false;
+	}
+	
+	return true;
+}
+
 stock bool Client_Cansee(int iViewer, int iTarget)
 {
 	float flStart[3], flEnd[3];
@@ -525,4 +634,17 @@ public bool TraceFilterSelf(int entity, int contentsMask, any iSelf)
 		return false;
 	
 	return true;
+}
+
+public bool AimTargetFilter(int entity, int contentsMask, any iExclude)
+{
+    return !(entity == iExclude);
+}
+
+stock void ClampAngle(float flAngles[3])
+{
+	while(flAngles[0] > 89.0)  flAngles[0] -= 360.0;
+	while(flAngles[0] < -89.0) flAngles[0] += 360.0;
+	while(flAngles[1] > 180.0) flAngles[1] -= 360.0;
+	while(flAngles[1] <-180.0) flAngles[1] += 360.0;
 }

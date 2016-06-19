@@ -97,14 +97,6 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 		return Plugin_Continue;
 	}
 	
-	if(TF2_GetPlayerClass(client) != TFClass_Medic)
-	{
-		ForcePlayerSuicide(client);
-		TF2_SetPlayerClass(client, TFClass_Medic);
-		
-		return Plugin_Continue;
-	}
-	
 	bool bChanged = false;
 	
 	int iPatient = TF2_GetPlayerThatNeedsHealing(client);
@@ -141,7 +133,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 		
 		//Check line of sigh
 		bool bHasLOS = Client_Cansee(client, iPatient);
-		if(bHasLOS)
+		if(bHasLOS && TF2_GetPlayerClass(client) == TFClass_Medic)
 		{
 			//If we can see our patient, switch to medigun if not active
 			int iSecondary = GetPlayerWeaponSlot(client, TFWeaponSlot_Secondary);
@@ -160,7 +152,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 						GetEntityClassname(iSecondary, strClass, sizeof(strClass));
 						
 						FakeClientCommand(client, "use %s", strClass);
-						SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iSecondary);
+					//	SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iSecondary);
 					}
 				}
 			}
@@ -209,7 +201,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 							GetEntityClassname(iPrimary, strClass, sizeof(strClass));
 							
 							FakeClientCommand(client, "use %s", strClass);
-							SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iPrimary);
+						//	SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iPrimary);
 						}
 						else
 						{
@@ -237,11 +229,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 		if(g_hPositions[client] != null)
 		{
 			SetHudTextParams(-0.6, 0.55, 0.1, 255, 255, 255, 255, 0, 0.0, 0.0, 0.0);
-			ShowSyncHudText(client, g_hHudInfo, "Healing: %N\nLine of sight: %s\nNodes: %i\nTargetNode: %i", 
-				iPatient, 
-				bHasLOS ? "Yes" : "No", 
-				g_hPositions[client].Length, 
-				g_iTargetNode[client]);
+			ShowSyncHudText(client, g_hHudInfo, "Target: %N\nLine of sight: %s", iPatient, bHasLOS ? "Yes" : "No");
 			
 			//Navigate our path
 			if(g_iTargetNode[client] >= 0 && g_iTargetNode[client] < g_hPositions[client].Length)
@@ -391,8 +379,8 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 		 	flPos[2] += 15.0;
 		 	flPPos[2] += 15.0;
 		 
-			int iStartAreaIndex = NavMesh_GetNearestArea(flPos);
-			int iGoalAreaIndex  = NavMesh_GetNearestArea(flPPos);
+			int iStartAreaIndex = NavMesh_GetNearestArea(flPos, false, 3000.0, false);
+			int iGoalAreaIndex  = NavMesh_GetNearestArea(flPPos, false, 3000.0, false);
 			
 			Handle hAreas = NavMesh_GetAreas();
 			if (hAreas == INVALID_HANDLE) return Plugin_Continue;

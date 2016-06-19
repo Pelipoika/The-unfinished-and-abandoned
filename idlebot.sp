@@ -7,19 +7,15 @@
 
 int g_iPathLaserModelIndex = -1;
 int iResource = -1;
+Handle g_hHudInfo;
 
 bool g_bAFK[MAXPLAYERS + 1];
 int g_iTargetNode[MAXPLAYERS + 1];
 int g_iLastPatient[MAXPLAYERS + 1];
 float flNextPathUpdate[MAXPLAYERS + 1];
 float flNextStuckCheck[MAXPLAYERS + 1];
-
-Handle g_hHudInfo;
-
+float flNextAttack[MAXPLAYERS + 1];
 ArrayList g_hPositions[MAXPLAYERS + 1];
-
-//TODO:
-//Stay behind patient when healed entity is patient
 
 public Plugin myinfo = 
 {
@@ -73,6 +69,13 @@ public Action Command_Idle(int client, int argc)
 	}
 	else
 	{
+		if (!NavMesh_Exists()) 
+		{
+			ReplyToCommand(client, "This map doesnt support AFK bot");
+		
+			return Plugin_Handled;
+		}
+	
 		flNextStuckCheck[client] = GetGameTime() + 5.0;
 		g_iLastPatient[client] = -1;
 		g_bAFK[client] = true;
@@ -96,8 +99,8 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 	
 	if(TF2_GetPlayerClass(client) != TFClass_Medic)
 	{
-		TF2_SetPlayerClass(client, TFClass_Medic);
 		ForcePlayerSuicide(client);
+		TF2_SetPlayerClass(client, TFClass_Medic);
 		
 		return Plugin_Continue;
 	}
@@ -175,16 +178,14 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 			TeleportEntity(client, NULL_VECTOR, flAimDir, NULL_VECTOR);
 			
 			//Try to switch medigun targets
-			if(iHealTarget == iPatient)
-			{
-				iButtons &= ~IN_ATTACK;
-				bChanged = true;
-			}
-			
 			if(iHealTarget != iPatient)
 			{
-				iButtons |= IN_ATTACK;
-				bChanged = true;
+				if(flNextAttack[client] <= GetGameTime())
+				{
+					iButtons |= IN_ATTACK;
+					flNextAttack[client] = GetGameTime() + 0.5;
+					bChanged = true;
+				}	
 			}
 		}
 		
@@ -309,6 +310,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 							
 						TE_SendToClient(client);
 						
+						flPosition[2] = flPos[2];
 						float flGoalDist = GetVectorDistance(flPosition, flPos);
 						if(flGoalDist >= 40.0)
 						{							
@@ -345,8 +347,8 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 		 	flPos[2] += 15.0;
 		 	flPPos[2] += 15.0;
 		 
-			int iStartAreaIndex = NavMesh_GetNearestArea(flPos, false, 1000.0, true);
-			int iGoalAreaIndex  = NavMesh_GetNearestArea(flPPos, false, 1000.0, true);
+			int iStartAreaIndex = NavMesh_GetNearestArea(flPos);
+			int iGoalAreaIndex  = NavMesh_GetNearestArea(flPPos);
 			
 			Handle hAreas = NavMesh_GetAreas();
 			if (hAreas == INVALID_HANDLE) return Plugin_Continue;
@@ -366,7 +368,8 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 				_,
 				iClosestAreaIndex,
 				flMaxPathLength,
-				flMaxStepSize);
+				flMaxStepSize,
+				false);
 			
 			int iTempAreaIndex = iClosestAreaIndex;
 			int iParentAreaIndex = NavMeshArea_GetParent(iTempAreaIndex);
@@ -435,40 +438,6 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 	}
 	
 	return bChanged ? Plugin_Changed : Plugin_Continue;
-}
-
-public int SlenderChaseBossShortestPathCost(int iAreaIndex,int iFromAreaIndex,int iLadderIndex, any iStepSize)
-{
-	if (iFromAreaIndex == -1)
-	{
-		return 0;
-	}
-	else
-	{
-		int iDist;
-		float flAreaCenter[3], flFromAreaCenter[3];
-		NavMeshArea_GetCenter(iAreaIndex, flAreaCenter);
-		NavMeshArea_GetCenter(iFromAreaIndex, flFromAreaCenter);
-		
-		if (iLadderIndex != -1)
-		{
-			iDist = RoundFloat(NavMeshLadder_GetLength(iLadderIndex));
-		}
-		else
-		{
-			iDist = RoundFloat(GetVectorDistance(flAreaCenter, flFromAreaCenter));
-		}
-		
-		int iCost = iDist + NavMeshArea_GetCostSoFar(iFromAreaIndex);
-		
-		int iAreaFlags = NavMeshArea_GetFlags(iAreaIndex);
-		if (iAreaFlags & NAV_MESH_CROUCH) iCost += 20;
-		if (iAreaFlags & NAV_MESH_JUMP) iCost += (5 * iDist);
-		
-		if ((flAreaCenter[2] - flFromAreaCenter[2]) > iStepSize) iCost += iStepSize;
-		
-		return iCost;
-	}
 }
 
 stock int GetSlotFromPlayerWeapon(int iClient, int iWeapon)

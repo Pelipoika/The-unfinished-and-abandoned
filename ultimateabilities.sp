@@ -260,12 +260,14 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 			}
 			case TFClass_Medic:
 			{
-				g_iDamageDone[client] = 0;
-			
+				int iReviveCount = 0;
+				
 				for(int i = 1; i <= MaxClients; i++)
 				{
 					if(IsClientInGame(i) && !IsPlayerAlive(i) && TF2_GetClientTeam(i) == TF2_GetClientTeam(client))
 					{
+						iReviveCount++;
+					
 						TF2_RespawnPlayer(i);
 						
 						float flTimeImmunity = 3.0;
@@ -284,6 +286,9 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 						AcceptEntityInput(i, "ClearContext");
 					}
 				}
+				
+				if(iReviveCount > 0)
+					g_iDamageDone[client] = 0;
 			}
 			case TFClass_Engineer:
 			{
@@ -573,7 +578,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		else
 		{
 			for(int i = 0; i < flPercentage / 4; i++)
-				Format(strProgressBar, sizeof(strProgressBar), "%s|", strProgressBar);
+				Format(strProgressBar, sizeof(strProgressBar), "%s█", strProgressBar);
 		}
 		
 		if(g_bIsMvM)

@@ -45,6 +45,9 @@ public void OnPluginStart()
 	{
 		if(bIsCommand && iFlags & FCVAR_CHEAT)
 		{
+			if(StrEqual(strConCommand, "disguise") || StrEqual(strConCommand, "lastdisguise"))
+				continue;
+				
 			RegConsoleCmd(strConCommand, OnCheatCommand);
 			iHooks++;
 		}

@@ -36,6 +36,7 @@ bool g_bAbilityActive[MAXPLAYERS+1];
 float g_flAbilityTime[MAXPLAYERS+1];
 bool g_bIsMvM;
 Handle g_hHudInfo;
+Handle g_hHudInfo2;
 
 //Resurrect
 float flDeathPos[MAXPLAYERS+1][3];
@@ -77,7 +78,8 @@ public void OnPluginStart()
 	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
 	
 	g_hHudInfo = CreateHudSynchronizer();
-
+	g_hHudInfo2 = CreateHudSynchronizer();
+	
 	AddNormalSoundHook(NormalSoundHook);
 	
 	RegAdminCmd("sm_fillult", Command_GiveUlt, ADMFLAG_ROOT);
@@ -85,7 +87,9 @@ public void OnPluginStart()
 
 public Action Command_GiveUlt(int client, int args)
 {
-	g_iDamageDone[client] = 999999;
+	g_iDamageDone[client] += 100;
+	PrintCenterText(client, "Damage Done %i", g_iDamageDone[client]);
+	
 	return Plugin_Handled;
 }
 
@@ -237,7 +241,7 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 			case TFClass_Heavy:
 			{
 				g_iDamageDone[client] = 0;
-				g_flAbilityTime[client] = GetGameTime() + 20.0;
+				g_flAbilityTime[client] = GetGameTime() + 10.0;
 				g_bAbilityActive[client] = true;
 			
 				int shield = CreateEntityByName("entity_medigun_shield");	
@@ -250,7 +254,7 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 				else if (TF2_GetClientTeam(client) == TFTeam_Blue) 
 					DispatchKeyValue(shield, "skin", "1");
 				
-				SetEntPropFloat(client, Prop_Send, "m_flRageMeter", 200.0);
+				SetEntPropFloat(client, Prop_Send, "m_flRageMeter", 100.0);
 				SetEntProp(client, Prop_Send, "m_bRageDraining", 1);
 				
 				DispatchSpawn(shield);
@@ -557,6 +561,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	else
 	{
 		char strProgressBar[64];
+		char strProgressBarFilled[64];
 		
 		if(flPercentage == 100.0)
 		{
@@ -573,12 +578,15 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				default:				Format(strProgressBar, sizeof(strProgressBar), "Not implemented");
 			}
 			
-			Format(strProgressBar, sizeof(strProgressBar), "%s\n[ACTION SLOT KEY]", strProgressBar);
+			Format(strProgressBarFilled, sizeof(strProgressBarFilled), "%s\n[ACTION SLOT KEY]%s", strProgressBar, strProgressBarFilled);
 		}
 		else
 		{
-			for(int i = 0; i < flPercentage / 4; i++)
+			for(int i = 0; i < flPercentage / 5; i++)
 				Format(strProgressBar, sizeof(strProgressBar), "%s█", strProgressBar);
+			
+			for(int i = 0; i < 100.0 / 5; i++)
+				Format(strProgressBarFilled, sizeof(strProgressBarFilled), "%s█", strProgressBarFilled);
 		}
 		
 		if(g_bIsMvM)
@@ -591,6 +599,18 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		else
 			SetHudTextParams(-1.0, 1.0, 0.1, 0, 255, 0, 0, 0, 0.0, 0.0, 0.0);
 		ShowSyncHudText(client, g_hHudInfo, "%.0f%%\n%s", flPercentage, strProgressBar);
+		
+		if(g_bIsMvM)
+		{
+			if(class == TFClass_Engineer)
+				SetHudTextParams(0.17, 0.04, 0.1, 255, 0, 0, 0, 0, 0.0, 0.0, 0.0);
+			else
+				SetHudTextParams(0.04, 0.04, 0.1, 255, 0, 0, 0, 0, 0.0, 0.0, 0.0);
+		}
+		else
+			SetHudTextParams(-1.0, 1.0, 0.1, 255, 0, 0, 0, 0, 0.0, 0.0, 0.0);
+			
+		ShowSyncHudText(client, g_hHudInfo2, "\n%s", strProgressBarFilled);
 	}
 	
 	return Plugin_Continue;	
@@ -833,6 +853,57 @@ void FireRocket(int client)
 	SetEntProp(l2, Prop_Data, "m_nSimulationTick", 2);
 } 
 
+public Action Timer_FireRocket(Handle timer, int iRef)
+{
+	int ent = EntRefToEntIndex(iRef);
+	if(ent != INVALID_ENT_REFERENCE)
+	{
+		int client = GetEntPropEnt(ent, Prop_Send, "m_hOwnerEntity");
+		int iLauncher = GetEntProp(ent, Prop_Data, "m_nSimulationTick");
+		
+		float flMaxs[3];
+		GetEntPropVector(client, Prop_Send, "m_vecMaxs", flMaxs);
+		
+		float flPos[3], flAng[3], vLeft[3];
+		GetClientEyeAngles(client, flAng);
+		GetClientEyePosition(client, flPos);
+		GetAngleVectors(flAng, NULL_VECTOR, vLeft, NULL_VECTOR);
+		
+		switch(iLauncher)
+		{
+			case 1:
+			{
+				flPos[0] += (vLeft[0] * -60);
+				flPos[1] += (vLeft[1] * -60);
+				flPos[2] += (vLeft[2] * -60);
+			}
+			case 2:
+			{
+				flPos[0] += (vLeft[0] * 60);
+				flPos[1] += (vLeft[1] * 60);
+				flPos[2] += (vLeft[2] * 60);
+			}
+		}
+		
+		flPos[2] -= GetRandomFloat(-(flMaxs[2] / 1.5), flMaxs[2] / 1.5);
+		
+		DispatchKeyValueVector(ent, "origin", flPos);
+		DispatchKeyValueVector(ent, "angles", flAng);
+		
+		switch(GetRandomInt(1, 3))
+		{
+			case 1: EmitSoundToAll("weapons/airstrike_fire_01.wav", ent);
+			case 2: EmitSoundToAll("weapons/airstrike_fire_02.wav", ent);
+			case 3: EmitSoundToAll("weapons/airstrike_fire_03.wav", ent);
+		}
+		
+		AcceptEntityInput(ent, "FireOnce");
+		return Plugin_Continue;
+	}
+	
+	return Plugin_Stop;
+}
+
 public Action TF2_CalcIsAttackCritical(int client, int weapon, char[] weaponname, bool &result)
 {
 	if(client > 0 && client <= MaxClients && IsClientInGame(client) && g_bAbilityActive[client])
@@ -1047,57 +1118,6 @@ public void Event_NPCHurt(Event event, const char[] name, bool dontBroadcast)
 	{
 		g_iDamageDone[iAttacker] += iDmg;
 	}
-}
-
-public Action Timer_FireRocket(Handle timer, int iRef)
-{
-	int ent = EntRefToEntIndex(iRef);
-	if(ent != INVALID_ENT_REFERENCE)
-	{
-		int client = GetEntPropEnt(ent, Prop_Send, "m_hOwnerEntity");
-		int iLauncher = GetEntProp(ent, Prop_Data, "m_nSimulationTick");
-		
-		float flMaxs[3];
-		GetEntPropVector(client, Prop_Send, "m_vecMaxs", flMaxs);
-		
-		float flPos[3], flAng[3], vLeft[3];
-		GetClientEyeAngles(client, flAng);
-		GetClientEyePosition(client, flPos);
-		GetAngleVectors(flAng, NULL_VECTOR, vLeft, NULL_VECTOR);
-		
-		switch(iLauncher)
-		{
-			case 1:
-			{
-				flPos[0] += (vLeft[0] * -60);
-				flPos[1] += (vLeft[1] * -60);
-				flPos[2] += (vLeft[2] * -60);
-			}
-			case 2:
-			{
-				flPos[0] += (vLeft[0] * 60);
-				flPos[1] += (vLeft[1] * 60);
-				flPos[2] += (vLeft[2] * 60);
-			}
-		}
-		
-		flPos[2] -= GetRandomFloat(-(flMaxs[2] / 2), flMaxs[2] / 2);
-		
-		DispatchKeyValueVector(ent, "origin", flPos);
-		DispatchKeyValueVector(ent, "angles", flAng);
-		
-		switch(GetRandomInt(1, 3))
-		{
-			case 1: EmitSoundToAll("weapons/airstrike_fire_01.wav", ent);
-			case 2: EmitSoundToAll("weapons/airstrike_fire_02.wav", ent);
-			case 3: EmitSoundToAll("weapons/airstrike_fire_03.wav", ent);
-		}
-		
-		AcceptEntityInput(ent, "FireOnce");
-		return Plugin_Continue;
-	}
-	
-	return Plugin_Stop;
 }
 
 stock void CreateParticle(char[] particle, float pos[3])

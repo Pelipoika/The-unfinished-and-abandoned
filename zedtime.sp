@@ -12,28 +12,13 @@
 #define SOUND_FAST	"replay/exitperformancemode.wav"
 #define SOUND_ADD	"misc/halloween/clock_tick.wav"
 
-#define	HIDEHUD_WEAPONSELECTION		( 1<<0 )	// Hide ammo count & weapon selection
-#define	HIDEHUD_FLASHLIGHT			( 1<<1 )
-#define	HIDEHUD_ALL					( 1<<2 )
-#define HIDEHUD_HEALTH				( 1<<3 )	// Hide health & armor / suit battery
-#define HIDEHUD_PLAYERDEAD			( 1<<4 )	// Hide when local player's dead
-#define HIDEHUD_NEEDSUIT			( 1<<5 )	// Hide when the local player doesn't have the HEV suit
-#define HIDEHUD_MISCSTATUS			( 1<<6 )	// Hide miscellaneous status elements (trains, pickup history, death notices, etc)
-#define HIDEHUD_CHAT				( 1<<7 )	// Hide all communication elements (saytext, voice icon, etc)
-#define	HIDEHUD_CROSSHAIR			( 1<<8 )	// Hide crosshairs
-#define	HIDEHUD_VEHICLE_CROSSHAIR	( 1<<9 )	// Hide vehicle crosshair
-#define HIDEHUD_INVEHICLE			( 1<<10 )
-#define HIDEHUD_BONUS_PROGRESS		( 1<<11 )	// Hide bonus progress display (for bonus map challenges)
-#define HIDEHUD_BITCOUNT			12
-
-Handle cvarTimeScale;
-Handle cvarCheats;
-
-bool g_bExplosiveJumping[MAXPLAYERS+1];
+ConVar cvarTimeScale;
+ConVar cvarCheats;
 
 float g_flZedTime;
 bool g_bZedTime;
 float g_glZedTimeCooldown;
+float g_flTimeScaleGoal;
 
 static const float SLOWMO_AMOUNT = 0.4;
 
@@ -107,30 +92,16 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	return Plugin_Handled;
 }
 
-public Action Timer_ShowTrades(Handle timer, any client)
-{
-	if(g_flZedTime <= GetTickedTime() && g_bZedTime)
-	{
-		DisableSlowmo();
-	}
-}
-
-public void OnClientPutInServer(int client)
-{
-	g_bExplosiveJumping[client] = false;	
-}
-
 public void OnMapStart()
 {
 	PrecacheSound(SOUND_SLOW);
 	PrecacheSound(SOUND_FAST);
 	PrecacheSound(SOUND_ADD);
 	
-	CreateTimer(0.1, Timer_ShowTrades, _, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
-	
-	g_flZedTime = GetTickedTime() - 10.0;
-	g_glZedTimeCooldown = GetTickedTime() - 10.0;
-	DisableSlowmo();
+	g_flZedTime = 0.0;
+	g_glZedTimeCooldown = 0.0;
+	g_flTimeScaleGoal = 0.0;
+	g_bZedTime = false;
 }
 
 public Action Event_Death(Handle hEvent, char[] name, bool dontBroadcast)
@@ -170,6 +141,41 @@ public Action Event_Death(Handle hEvent, char[] name, bool dontBroadcast)
 	return Plugin_Continue;
 }
 
+public void OnGameFrame()
+{
+	if(g_flTimeScaleGoal != 0.0)
+	{
+		float flTimeScale = cvarTimeScale.FloatValue;
+		
+		if(flTimeScale > g_flTimeScaleGoal)
+		{			
+			SetConVarFloat(cvarTimeScale, flTimeScale - 0.025);
+			if(cvarTimeScale.FloatValue <= g_flTimeScaleGoal)
+			{
+				SetConVarFloat(cvarTimeScale, SLOWMO_AMOUNT);
+			}
+		}
+		else if(flTimeScale < g_flTimeScaleGoal)
+		{
+			SetConVarFloat(cvarTimeScale, flTimeScale + 0.025);
+
+			if(cvarTimeScale.FloatValue >= g_flTimeScaleGoal)
+			{
+				SetConVarFloat(cvarTimeScale, 1.0);
+				SetConVarInt(cvarCheats, 0);
+				UpdateClientCheatValue(0);
+	
+				g_flTimeScaleGoal = 0.0;
+			}
+		}
+	}
+	
+	if(g_flZedTime <= GetTickedTime() && g_bZedTime)
+	{
+		DisableSlowmo();
+	}
+}
+
 stock void EnableSlowmo(int activator, float ZedChance)
 {
 	if(g_glZedTimeCooldown <= GetTickedTime() && GetRandomFloat(0.0, 100.0) <= ZedChance)
@@ -181,28 +187,29 @@ stock void EnableSlowmo(int activator, float ZedChance)
 		}
 		else
 		{
-//			EmitSoundToAll(SOUND_ADD);
-//			PrintCenterTextAll("%N extended zed-time (+3 Seconds)", activator);
+			EmitSoundToAll(SOUND_ADD);
+			PrintCenterTextAll("%N extended zed-time (+3 Seconds)", activator);
 		}
 
-		SetConVarFloat(cvarTimeScale, SLOWMO_AMOUNT);
 		SetConVarInt(cvarCheats, 1);
-		UpdateClientCheatValue(1);	
+		UpdateClientCheatValue(1);
 		
+		g_flTimeScaleGoal = SLOWMO_AMOUNT;
 		g_bZedTime = true;
 		g_flZedTime = GetTickedTime() + 3.0;
+		
 	}
 }
 
 stock void DisableSlowmo()
 {
-	EmitSoundToAll(SOUND_FAST);
-	EmitSoundToAll(SOUND_FAST);
+	if(g_bZedTime)
+	{
+		EmitSoundToAll(SOUND_FAST);
+		EmitSoundToAll(SOUND_FAST);
+	}
 	
-	SetConVarFloat(cvarTimeScale, 1.0);
-	SetConVarInt(cvarCheats, 0);
-	UpdateClientCheatValue(0);
-	
+	g_flTimeScaleGoal = 1.0;
 	g_glZedTimeCooldown = GetTickedTime() + 10.0;
 	g_bZedTime = false;
 }
@@ -225,17 +232,6 @@ stock void UpdateClientCheatValue(int value)
 				SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
 				SendConVarValue(client, cvarTimeScale, "1.0");
 			}
-		}
-	}
-}
-
-stock void SetEveryonesViewEntity(int client)
-{
-	for(int i = 1; i <= MaxClients; i++)
-	{
-		if(IsClientInGame(i) && IsPlayerAlive(i) && !IsFakeClient(i))
-		{
-			SetClientViewEntity(i, client);
 		}
 	}
 }

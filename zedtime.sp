@@ -12,6 +12,20 @@
 #define SOUND_FAST	"replay/exitperformancemode.wav"
 #define SOUND_ADD	"misc/halloween/clock_tick.wav"
 
+#define	HIDEHUD_WEAPONSELECTION		( 1<<0 )	// Hide ammo count & weapon selection
+#define	HIDEHUD_FLASHLIGHT			( 1<<1 )
+#define	HIDEHUD_ALL					( 1<<2 )
+#define HIDEHUD_HEALTH				( 1<<3 )	// Hide health & armor / suit battery
+#define HIDEHUD_PLAYERDEAD			( 1<<4 )	// Hide when local player's dead
+#define HIDEHUD_NEEDSUIT			( 1<<5 )	// Hide when the local player doesn't have the HEV suit
+#define HIDEHUD_MISCSTATUS			( 1<<6 )	// Hide miscellaneous status elements (trains, pickup history, death notices, etc)
+#define HIDEHUD_CHAT				( 1<<7 )	// Hide all communication elements (saytext, voice icon, etc)
+#define	HIDEHUD_CROSSHAIR			( 1<<8 )	// Hide crosshairs
+#define	HIDEHUD_VEHICLE_CROSSHAIR	( 1<<9 )	// Hide vehicle crosshair
+#define HIDEHUD_INVEHICLE			( 1<<10 )
+#define HIDEHUD_BONUS_PROGRESS		( 1<<11 )	// Hide bonus progress display (for bonus map challenges)
+#define HIDEHUD_BITCOUNT			12
+
 Handle cvarTimeScale;
 Handle cvarCheats;
 
@@ -37,6 +51,23 @@ public void OnPluginStart()
 	cvarTimeScale = FindConVar("host_timescale");
 	cvarCheats = FindConVar("sv_cheats");
 	
+	int iHooks = 0;
+	char strConCommand[128];
+	bool bIsCommand;
+	int iFlags;
+	Handle hSearch = FindFirstConCommand(strConCommand, sizeof(strConCommand), bIsCommand, iFlags);
+	do
+	{
+		if(bIsCommand && iFlags & FCVAR_CHEAT)
+		{
+			RegConsoleCmd(strConCommand, OnCheatCommand);
+			iHooks++;
+		}
+	}
+	while(FindNextConCommand(hSearch, strConCommand, sizeof(strConCommand), bIsCommand, iFlags));
+
+	PrintToServer("[Zed Time] Hooked %i cheat commands", iHooks);
+	
 	HookEvent("player_death", Event_Death);
 	
 	RegAdminCmd("sm_slowmo", Command_ToggleSlowmo, ADMFLAG_ROOT);
@@ -44,16 +75,35 @@ public void OnPluginStart()
 
 public Action Command_ToggleSlowmo(int client, int args)
 {
-/*	if(g_bZedTime)
+	g_glZedTimeCooldown = 0.0;
+	
+	if(g_bZedTime)
 		DisableSlowmo();
 	else
-		EnableSlowmo(client, 100.0);*/
-	int target = GetClientAimTarget(client, false);
-	if(target > 0)
-		SetClientViewEntity(client, target);
-	else
-		SetClientViewEntity(client, client);
+		EnableSlowmo(client, 100.0);
 		
+	return Plugin_Handled;
+}
+
+public Action OnCheatCommand(int client, int args)
+{
+	if(client <= 0 && g_bZedTime)
+		return Plugin_Continue;
+
+	PrintToConsole(client, "Cheater! %s", args);
+	return Plugin_Handled;
+}
+
+public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
+{
+	if(!impulse || !g_bZedTime) //We just want to prevent impulse commands during zedtime
+		return Plugin_Continue;
+
+	if(impulse == 201) //Allow sprays
+		return Plugin_Continue;
+
+	PrintToConsole(client, "Cheater! %i", impulse);
+	
 	return Plugin_Handled;
 }
 
@@ -102,12 +152,12 @@ public Action Event_Death(Handle hEvent, char[] name, bool dontBroadcast)
 		{
 			EnableSlowmo(attacker, 50.0);
 		}
-		else if(customkill == TF_CUSTOM_TAUNT_HADOUKEN || customkill == TF_CUSTOM_TAUNT_HIGH_NOON
-			||	customkill == TF_CUSTOM_TAUNT_GRAND_SLAM || customkill == TF_CUSTOM_TAUNT_FENCING
-			||	customkill == TF_CUSTOM_TAUNT_ARROW_STAB || customkill == TF_CUSTOM_TAUNT_GRENADE
-			||	customkill == TF_CUSTOM_TAUNT_BARBARIAN_SWING || customkill == TF_CUSTOM_TAUNT_UBERSLICE
-			||	customkill == TF_CUSTOM_TAUNT_ENGINEER_SMASH || customkill == TF_CUSTOM_TAUNT_ENGINEER_ARM
-			||	customkill == TF_CUSTOM_TAUNT_ARMAGEDDON || customkill == TF_CUSTOM_TAUNT_UBERSLICE
+		else if(customkill == TF_CUSTOM_TAUNT_HADOUKEN             || customkill == TF_CUSTOM_TAUNT_HIGH_NOON
+			||	customkill == TF_CUSTOM_TAUNT_GRAND_SLAM           || customkill == TF_CUSTOM_TAUNT_FENCING
+			||	customkill == TF_CUSTOM_TAUNT_ARROW_STAB           || customkill == TF_CUSTOM_TAUNT_GRENADE
+			||	customkill == TF_CUSTOM_TAUNT_BARBARIAN_SWING      || customkill == TF_CUSTOM_TAUNT_UBERSLICE
+			||	customkill == TF_CUSTOM_TAUNT_ENGINEER_SMASH       || customkill == TF_CUSTOM_TAUNT_ENGINEER_ARM
+			||	customkill == TF_CUSTOM_TAUNT_ARMAGEDDON           || customkill == TF_CUSTOM_TAUNT_UBERSLICE
 			||	customkill == TF_CUSTOM_TAUNT_ALLCLASS_GUITAR_RIFF || customkill == TF_CUSTOM_TELEFRAG
 			||	customkill == TF_CUSTOM_COMBO_PUNCH)
 		{
@@ -135,14 +185,6 @@ stock void EnableSlowmo(int activator, float ZedChance)
 //			PrintCenterTextAll("%N extended zed-time (+3 Seconds)", activator);
 		}
 
-		int flags2 = GetConVarFlags(cvarCheats);
-		flags2 &= ~FCVAR_CHEAT
-		SetConVarFlags(cvarCheats, flags2);
-		
-		int flags = GetConVarFlags(cvarTimeScale);
-		flags &= ~FCVAR_CHEAT
-		SetConVarFlags(cvarTimeScale, flags);
-	
 		SetConVarFloat(cvarTimeScale, SLOWMO_AMOUNT);
 		SetConVarInt(cvarCheats, 1);
 		UpdateClientCheatValue(1);	
@@ -156,14 +198,6 @@ stock void DisableSlowmo()
 {
 	EmitSoundToAll(SOUND_FAST);
 	EmitSoundToAll(SOUND_FAST);
-	
-	int flags2 = GetConVarFlags(cvarCheats);
-	flags2 |= FCVAR_CHEAT
-	SetConVarFlags(cvarCheats, flags2);
-	
-	int flags = GetConVarFlags(cvarTimeScale);
-	flags |= FCVAR_CHEAT
-	SetConVarFlags(cvarTimeScale, flags);
 	
 	SetConVarFloat(cvarTimeScale, 1.0);
 	SetConVarInt(cvarCheats, 0);
@@ -185,15 +219,11 @@ stock void UpdateClientCheatValue(int value)
 			{
 				SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", SLOWMO_AMOUNT);
 				SendConVarValue(client, cvarTimeScale, "0.4");
-			//	SetVariantInt(0);z
-			//	AcceptEntityInput(client, "SetHudVisibility");
 			}
 			else
 			{
 				SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
 				SendConVarValue(client, cvarTimeScale, "1.0");
-			//	SetVariantInt(1);
-			//	AcceptEntityInput(client, "SetHudVisibility");
 			}
 		}
 	}

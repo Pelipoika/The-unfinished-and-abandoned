@@ -118,13 +118,15 @@ public Action Event_Death(Handle hEvent, char[] name, bool dontBroadcast)
 	
 	if(attacker > 0 && attacker <= MaxClients && IsClientInGame(attacker) && attacker != client) 
 	{
+		float flChance = 0.0;
+		
 		if(rocket_jump)
 		{
-			EnableSlowmo(attacker, 25.0);
+			flChance += 15.0;
 		}
 		else if(playerpenetratecount >= 1)
 		{
-			EnableSlowmo(attacker, 50.0);
+			flChance += 5.0;
 		}
 		else if(customkill == TF_CUSTOM_TAUNT_HADOUKEN             || customkill == TF_CUSTOM_TAUNT_HIGH_NOON
 			||	customkill == TF_CUSTOM_TAUNT_GRAND_SLAM           || customkill == TF_CUSTOM_TAUNT_FENCING
@@ -135,10 +137,12 @@ public Action Event_Death(Handle hEvent, char[] name, bool dontBroadcast)
 			||	customkill == TF_CUSTOM_TAUNT_ALLCLASS_GUITAR_RIFF || customkill == TF_CUSTOM_TELEFRAG
 			||	customkill == TF_CUSTOM_COMBO_PUNCH)
 		{
-			EnableSlowmo(attacker, 50.0);
+			flChance += 25.0;
 		}
 		else
-			EnableSlowmo(attacker, 1.5);
+			flChance += 0.5;
+			
+		EnableSlowmo(attacker, flChance);
 	}
 
 	return Plugin_Continue;
@@ -191,7 +195,6 @@ stock void EnableSlowmo(int activator, float ZedChance)
 		else
 		{
 			EmitSoundToAll(SOUND_ADD);
-			PrintCenterTextAll("%N extended zed-time (+3 Seconds)", activator);
 		}
 
 		SetConVarInt(cvarCheats, 1);
@@ -200,7 +203,7 @@ stock void EnableSlowmo(int activator, float ZedChance)
 		g_flTimeScaleGoal = SLOWMO_AMOUNT;
 		g_bZedTime = true;
 		g_flZedTime = GetTickedTime() + 3.0;
-		
+		g_glZedTimeCooldown = GetTickedTime() + 10.0;
 	}
 }
 
@@ -213,7 +216,6 @@ stock void DisableSlowmo()
 	}
 	
 	g_flTimeScaleGoal = 1.0;
-	g_glZedTimeCooldown = GetTickedTime() + 10.0;
 	g_bZedTime = false;
 }
 

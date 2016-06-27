@@ -497,7 +497,7 @@ stock int TF2_GetPlayerThatNeedsHealing(int client)
 	
 	for (int i = 1; i <= MaxClients; i++)
 	{
-		if(i != client && IsClientInGame(i) && IsPlayerAlive(i) && TF2_GetClientTeam(i) == team && TF2_IsHealable(i))
+		if(i != client && IsClientInGame(i) && IsPlayerAlive(i) && TF2_GetClientTeam(i) == team && TF2_IsHealable(i) && !g_bAFK[i])
 		{
 			int iHealth = GetClientHealth(i);
 			int iMaxHealth = GetEntProp(iResource, Prop_Send, "m_iMaxHealth", _, i);

@@ -156,19 +156,8 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 					}
 				}
 			}
-			
-			//We want to aim at the center of the client
-			GetClientAbsOrigin(iPatient, flPPos);
-			GetClientAbsOrigin(client, flPos);
-			flPPos[2] -= flMaxs[2] / 2;
-			
-			//Aim at our patient
-			float flAimDir[3];
-			MakeVectorFromPoints(flPos, flPPos, flAimDir);
-			GetVectorAngles(flAimDir, flAimDir);
-
-			ClampAngle(flAimDir);
-			TeleportEntity(client, NULL_VECTOR, flAimDir, NULL_VECTOR);
+		
+			TF2_LookAt(client, iPatient);
 			
 			//Try to switch medigun targets
 			if(iHealTarget != iPatient)
@@ -205,18 +194,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 						}
 						else
 						{
-							//We want to aim at the center of the client
-							GetClientAbsOrigin(iEnemy, flPPos);
-							GetClientAbsOrigin(client, flPos);
-							flPPos[2] -= flMaxs[2] / 2;
-							
-							//Aim at our patient
-							float flAimDir[3];
-							MakeVectorFromPoints(flPos, flPPos, flAimDir);
-							GetVectorAngles(flAimDir, flAimDir);
-				
-							ClampAngle(flAimDir);
-							TeleportEntity(client, NULL_VECTOR, flAimDir, NULL_VECTOR);
+							TF2_LookAt(client, iEnemy);
 							
 							iButtons |= IN_ATTACK;
 							bChanged = true;
@@ -470,6 +448,65 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 	}
 	
 	return bChanged ? Plugin_Changed : Plugin_Continue;
+}
+
+#define X = 1
+#define Y = 0
+
+stock void TF2_LookAt(int client, int iTarget)
+{
+	//We want to aim at the center of the client
+	float flPos[3], flPPos[3], flMaxs[3];
+	GetClientAbsOrigin(client, flPos);
+	GetClientAbsOrigin(iTarget, flPPos);
+	GetEntPropVector(iTarget, Prop_Send, "m_vecMaxs", flMaxs);
+	flPPos[2] -= flMaxs[2] / 3;
+	
+	float flAng[3], flTAng[3];
+	GetClientEyeAngles(client, flAng);
+	GetClientEyeAngles(iTarget, flTAng);
+	
+	// get normalised direction from target to client
+	float desired_dir[3];
+	MakeVectorFromPoints(flPos, flPPos, desired_dir);
+	GetVectorAngles(desired_dir, desired_dir);
+	
+	// ease the current direction to the target direction
+	flAng[0] += AngleNormalize(desired_dir[0] - flAng[0]) * 0.1;
+	flAng[1] += AngleNormalize(desired_dir[1] - flAng[1]) * 0.1;
+
+//	PrintCenterText(client, "flAng %f %f %f\nflTAng %f %f %f\ndesired_dir %f %f %f\nAngleDifference %i", flAng[0], flAng[1], flAng[2], 
+//																										  flTAng[0], flTAng[1], flTAng[2], 
+//																										  desired_dir[0], desired_dir[1], desired_dir[2], 
+//																										  AngleDifference(flAng[1], flTAng[1]));	
+
+	TeleportEntity(client, NULL_VECTOR, flAng, NULL_VECTOR);
+}
+
+//int AngleDifference(float angle1, float angle2)
+//{
+ //   int diff = RoundToNearest((angle2 - angle1 + 180)) % 360 - 180;
+//    return diff < -180 ? diff + 360 : diff;
+//}
+
+stock float AngleNormalize(float angle)
+{
+	angle = fmodf(angle, 360.0);
+	if (angle > 180) 
+	{
+		angle -= 360;
+	}
+	if (angle < -180)
+	{
+		angle += 360;
+	}
+	
+	return angle;
+}
+
+stock float fmodf(float number, float denom)
+{
+	return number - RoundToFloor(number / denom) * denom;
 }
 
 stock int GetSlotFromPlayerWeapon(int iClient, int iWeapon)

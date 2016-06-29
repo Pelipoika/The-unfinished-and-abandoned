@@ -100,6 +100,10 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 	bool bChanged = false;
 	
 	int iPatient = TF2_GetPlayerThatNeedsHealing(client);
+	int iEnemy = 0;
+	
+	bool bHasLOS = false;
+	
 	if(iPatient > 0)
 	{
 		//Save our patient
@@ -132,7 +136,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 		int iHealTarget = -1;
 		
 		//Check line of sigh
-		bool bHasLOS = Client_Cansee(client, iPatient);
+		bHasLOS = Client_Cansee(client, iPatient);
 		if(bHasLOS && TF2_GetPlayerClass(client) == TFClass_Medic)
 		{
 			//If we can see our patient, switch to medigun if not active
@@ -173,7 +177,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 		else
 		{
 			//Nobody to heal, DM
-			int iEnemy = FindNearestEnemy(client, 1000.0);
+			iEnemy = FindNearestEnemy(client, 1000.0);
 			if(iEnemy > 0)
 			{
 				//If we can see our patient, switch to medigun if not active
@@ -240,6 +244,9 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 					flToPos[1] = flGoPos[1];
 					flToPos[2] = flGoPos[2];
 					
+					if(iEnemy <= 0 && !bHasLOS)
+						TF2_LookAtPos(client, flToPos);
+						
 					flToPos[2] += 80.0;
 					
 					//Show a giant vertical beam at our goal node
@@ -441,11 +448,6 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 			g_iTargetNode[client] = g_hPositions[client].Length - 2;
 		}
 	}
-	else
-	{
-		SetHudTextParams(-0.6, 0.55, 0.1, 255, 155, 0, 255, 0, 0.0, 0.0, 0.0);
-		ShowSyncHudText(client, g_hHudInfo, "No available patients");
-	}
 	
 	return bChanged ? Plugin_Changed : Plugin_Continue;
 }
@@ -479,6 +481,27 @@ stock void TF2_LookAt(int client, int iTarget)
 //																										  flTAng[0], flTAng[1], flTAng[2], 
 //																										  desired_dir[0], desired_dir[1], desired_dir[2], 
 //																										  AngleDifference(flAng[1], flTAng[1]));	
+
+	TeleportEntity(client, NULL_VECTOR, flAng, NULL_VECTOR);
+}
+
+stock void TF2_LookAtPos(int client, float flPPos[3])
+{
+	//We want to aim at the center of the client
+	float flPos[3];
+	GetClientAbsOrigin(client, flPos);
+
+	float flAng[3];
+	GetClientEyeAngles(client, flAng);
+	
+	// get normalised direction from target to client
+	float desired_dir[3];
+	MakeVectorFromPoints(flPos, flPPos, desired_dir);
+	GetVectorAngles(desired_dir, desired_dir);
+	
+	// ease the current direction to the target direction
+	flAng[0] += AngleNormalize(desired_dir[0] - flAng[0]) * 0.1;
+	flAng[1] += AngleNormalize(desired_dir[1] - flAng[1]) * 0.1;
 
 	TeleportEntity(client, NULL_VECTOR, flAng, NULL_VECTOR);
 }

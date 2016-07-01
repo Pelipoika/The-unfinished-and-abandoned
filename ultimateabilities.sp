@@ -36,7 +36,6 @@ bool g_bAbilityActive[MAXPLAYERS+1];
 float g_flAbilityTime[MAXPLAYERS+1];
 bool g_bIsMvM;
 Handle g_hHudInfo;
-Handle g_hHudInfo2;
 
 //Resurrect
 float flDeathPos[MAXPLAYERS+1][3];
@@ -78,8 +77,7 @@ public void OnPluginStart()
 	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
 	
 	g_hHudInfo = CreateHudSynchronizer();
-	g_hHudInfo2 = CreateHudSynchronizer();
-	
+
 	AddNormalSoundHook(NormalSoundHook);
 	
 	RegAdminCmd("sm_fillult", Command_GiveUlt, ADMFLAG_ROOT);
@@ -237,6 +235,10 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 				TeleportEntity(bomb, NULL_VECTOR, NULL_VECTOR, flResult);
 
 				SDKHook(bomb, SDKHook_Think, OnGravitonThink);
+			}
+			case TFClass_DemoMan:
+			{
+				g_iDamageDone[client] = 0;
 			}
 			case TFClass_Heavy:
 			{
@@ -561,8 +563,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	else
 	{
 		char strProgressBar[64];
-		char strProgressBarFilled[64];
-		
+
 		if(flPercentage == 100.0)
 		{
 			switch(class)
@@ -578,15 +579,12 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				default:				Format(strProgressBar, sizeof(strProgressBar), "Not implemented");
 			}
 			
-			Format(strProgressBarFilled, sizeof(strProgressBarFilled), "%s\n[ACTION SLOT KEY]%s", strProgressBar, strProgressBarFilled);
+			Format(strProgressBar, sizeof(strProgressBar), "%s\n[ACTION SLOT KEY]", strProgressBar);
 		}
 		else
 		{
 			for(int i = 0; i < flPercentage / 5; i++)
 				Format(strProgressBar, sizeof(strProgressBar), "%s█", strProgressBar);
-			
-			for(int i = 0; i < 100.0 / 5; i++)
-				Format(strProgressBarFilled, sizeof(strProgressBarFilled), "%s█", strProgressBarFilled);
 		}
 		
 		if(g_bIsMvM)
@@ -599,18 +597,6 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		else
 			SetHudTextParams(-1.0, 1.0, 0.1, 0, 255, 0, 0, 0, 0.0, 0.0, 0.0);
 		ShowSyncHudText(client, g_hHudInfo, "%.0f%%\n%s", flPercentage, strProgressBar);
-		
-		if(g_bIsMvM)
-		{
-			if(class == TFClass_Engineer)
-				SetHudTextParams(0.17, 0.04, 0.1, 255, 0, 0, 0, 0, 0.0, 0.0, 0.0);
-			else
-				SetHudTextParams(0.04, 0.04, 0.1, 255, 0, 0, 0, 0, 0.0, 0.0, 0.0);
-		}
-		else
-			SetHudTextParams(-1.0, 1.0, 0.1, 255, 0, 0, 0, 0, 0.0, 0.0, 0.0);
-			
-		ShowSyncHudText(client, g_hHudInfo2, "\n%s", strProgressBarFilled);
 	}
 	
 	return Plugin_Continue;	

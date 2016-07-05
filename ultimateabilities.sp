@@ -514,7 +514,9 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				}
 				case TFClass_Engineer:
 				{
-					SetEntProp(client, Prop_Data, "m_iAmmo", 200, 4, 3);
+					int iMetal = GetEntProp(client, Prop_Data, "m_iAmmo", 4, 3);
+					if(iMetal < 200)
+						SetEntProp(client, Prop_Data, "m_iAmmo", 200, 4, 3);
 				}
 				case TFClass_Spy:
 				{

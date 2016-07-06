@@ -7,6 +7,9 @@
 
 #pragma newdecls required;
 
+Handle g_hHudInfo;
+Handle g_hHudInfo2;
+
 bool g_bTriggerBot[MAXPLAYERS+1];
 bool g_bZoomedOnly[MAXPLAYERS+1];
 bool g_bIgnoreDeadRinger[MAXPLAYERS+1];
@@ -19,6 +22,7 @@ bool g_bAllCrits[MAXPLAYERS+1];
 bool g_bAutoStrafe[MAXPLAYERS+1];
 bool g_bBhop[MAXPLAYERS+1];
 bool g_bNoSpread[MAXPLAYERS+1];
+bool g_bAimbot[MAXPLAYERS+1];
 int g_iTriggerPos[MAXPLAYERS+1];
 
 #define TRIGGER_ALL		-1
@@ -43,6 +47,9 @@ public Plugin myinfo =
 public void OnPluginStart()
 {
 	RegAdminCmd("sm_hacks", Command_Trigger, ADMFLAG_ROOT);
+	
+	g_hHudInfo = CreateHudSynchronizer();
+	g_hHudInfo2 = CreateHudSynchronizer();
 }
 
 public void OnClientPutInServer(int client)
@@ -59,6 +66,7 @@ public void OnClientPutInServer(int client)
 	g_bAutoStrafe[client] = false;
 	g_bBhop[client] = false;
 	g_bNoSpread[client] = false;
+	g_bAimbot[client] = false;
 	g_iTriggerPos[client] = TRIGGER_ALL;
 }
 
@@ -140,6 +148,11 @@ stock void DisplayHackMenuAtItem(int client, int page = 0)
 		menu.AddItem("12", "No Spread: On");
 	else
 		menu.AddItem("12", "No Spread: Off");
+		
+	if(g_bAimbot[client])
+		menu.AddItem("13", "Aimbot: On");
+	else
+		menu.AddItem("13", "Aimbot: Off");
 		
 	menu.ExitButton = true;
 	menu.DisplayAt(client, page, MENU_TIME_FOREVER);
@@ -268,6 +281,13 @@ public int MenuLegitnessHandler(Menu menu, MenuAction action, int param1, int pa
 					}
 				}
 			}
+			case 13:
+			{
+				if(g_bAimbot[param1])
+					g_bAimbot[param1] = false;
+				else
+					g_bAimbot[param1] = true;	
+			}
 		}
 		
 		DisplayHackMenuAtItem(param1, GetMenuSelectionPosition());
@@ -311,55 +331,157 @@ public Action OnSceneSpawned(int entity)
 } 
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
-{	
-	if(IsPlayerAlive(client) && !IsFakeClient(client))
+{
+	if(IsFakeClient(client) || !IsPlayerAlive(client))
+		return Plugin_Continue;	
+	
+	bool bChanged = false;
+	
+	if(g_bAimbot[client])
 	{
-		bool bChanged = false;
+		int iPlayerarray[MAXPLAYERS+1];
+		int iPlayercount;
 		
-		float flStartPos[3], flEyeAng[3];
-		GetClientEyePosition(client, flStartPos);
-		GetClientEyeAngles(client, flEyeAng);
+		for(int i = 1; i <= MaxClients; i++)
+		{
+			if(i != client && IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) != GetClientTeam(client) && TF2_IsKillable(i))
+			{
+				float flTPos[3], flPos[3];
+				GetClientAbsOrigin(i, flTPos);
+				GetClientEyePosition(client, flPos);
+				
+				float flMaxs[3];
+				GetEntPropVector(i, Prop_Send, "m_vecMaxs", flMaxs);
+				flTPos[2] += flMaxs[2] / 2;
+				
+				TR_TraceRayFilter(flPos, flTPos, MASK_SHOT, RayType_EndPoint, AimTargetFilter, client);
+				if(TR_DidHit())
+				{
+					int entity = TR_GetEntityIndex();
+					if(entity == i)
+					{
+						iPlayerarray[iPlayercount] = i;
+						iPlayercount++;
+					}
+				}
+			}						
+		}
+		
+		if(iPlayercount)
+		{
+			char strTargets[32 * MAX_NAME_LENGTH];
+			for (int i = 0; i < iPlayercount; i++)
+			{
+				float flTPos[3], flPos[3];
+				GetClientAbsOrigin(iPlayerarray[i], flTPos);
+				GetClientEyePosition(client, flPos);
+			
+				float flDistance = GetVectorDistance(flPos, flTPos) * 0.0254;
+				int target = iPlayerarray[i];
+				Format(strTargets, sizeof(strTargets), "%s\n%N - %.0f", strTargets, target, flDistance);
+			}
+			
+			SetHudTextParams(-0.6, 0.55, 0.1, 255, 0, 0, 0, 0, 0.0, 0.0, 0.0);
+			ShowSyncHudText(client, g_hHudInfo2, "%i VISIBLE:%s", iPlayercount, strTargets);
+		}
+	
+		if(!(buttons & IN_ATTACK))
+			return Plugin_Continue;
+			
+		int iTarget = FindTargetInViewCone(client);
+		if(iTarget != -1)
+		{
+			SetHudTextParams(0.55, 0.55, 0.1, 0, 255, 0, 0, 0, 0.0, 0.0, 0.0);
+			ShowSyncHudText(client, g_hHudInfo, "[AIMING AT: %N [%i HP]", iTarget, GetEntProp(iTarget, Prop_Send, "m_iHealth"));
+		
+			float flPPos[3], flTPos[3];
+			GetClientEyePosition(client, flPPos);
+			GetClientAbsOrigin(iTarget, flTPos);
+			
+			float flMaxs[3];
+			GetEntPropVector(iTarget, Prop_Send, "m_vecMaxs", flMaxs);
+			
+			flTPos[2] += flMaxs[2] / 2;
+		
+			float flAimDir[3];
+			MakeVectorFromPoints(flPPos, flTPos, flAimDir);
+			GetVectorAngles(flAimDir, flAimDir);
+			ClampAngle(flAimDir);
+			
+			angles = flAimDir;
+			
+			bChanged = true;
+		}
+	}
+	
+	float flStartPos[3], flEyeAng[3];
+	GetClientEyePosition(client, flStartPos);
+	GetClientEyeAngles(client, flEyeAng);
 
-		bool bStab = false;
+	bool bStab = false;
+	
+	if(g_bAutoBackstab[client])
+	{
+		char strWeapon[64];
+		GetClientWeapon(client, strWeapon, sizeof(strWeapon));
 		
-		if(g_bAutoBackstab[client])
+		if(StrEqual(strWeapon, "tf_weapon_knife", false))
 		{
-			char strWeapon[64];
-			GetClientWeapon(client, strWeapon, sizeof(strWeapon));
-			
-			if(StrEqual(strWeapon, "tf_weapon_knife", false))
+			int melee = GetPlayerWeaponSlot(client, TFWeaponSlot_Melee);
+			if(GetEntProp(melee, Prop_Send, "m_bReadyToBackstab") == 1)
 			{
-				int melee = GetPlayerWeaponSlot(client, TFWeaponSlot_Melee);
-				if(GetEntProp(melee, Prop_Send, "m_bReadyToBackstab") == 1)
-				{
-					buttons |= IN_ATTACK;
-					bStab = true;
-					bChanged = true;
-				}
+				buttons |= IN_ATTACK;
+				bStab = true;
+				bChanged = true;
 			}
 		}
-		
-		if(g_bTriggerBot[client] && !bStab)
+	}
+	
+	if(g_bTriggerBot[client] && !bStab)
+	{
+		Handle hTrace = TR_TraceRayFilterEx(flStartPos, flEyeAng, MASK_SHOT, RayType_Infinite, TraceRayDontHitEntity, client);
+		if(TR_DidHit(hTrace))
 		{
-			Handle hTrace = TR_TraceRayFilterEx(flStartPos, flEyeAng, MASK_SHOT, RayType_Infinite, TraceRayDontHitEntity, client);
-			if(TR_DidHit(hTrace))
+			int iHitEntity = TR_GetEntityIndex(hTrace);
+			if(IsValidClient(iHitEntity) && GetClientTeam(client) != GetClientTeam(iHitEntity))
 			{
-				int iHitEntity = TR_GetEntityIndex(hTrace);
-				if(IsValidClient(iHitEntity) && GetClientTeam(client) != GetClientTeam(iHitEntity))
-				{
-					if(g_bIgnoreDisguised[client] && TF2_IsPlayerInCondition(iHitEntity, TFCond_Disguised))
-						return Plugin_Continue;
-						
-					if(g_bIgnoreCloaked[client] && TF2_IsPlayerInCondition(iHitEntity, TFCond_Cloaked))
-						return Plugin_Continue;
-						
-					if(g_bIgnoreDeadRinger[client] && TF2_IsPlayerInCondition(iHitEntity, TFCond_DeadRingered))
-						return Plugin_Continue;
-						
-					bool bShoot = false;
-					int iHitGroup = TR_GetHitGroup(hTrace);
+				if(g_bIgnoreDisguised[client] && TF2_IsPlayerInCondition(iHitEntity, TFCond_Disguised))
+					return Plugin_Continue;
 					
-					if(g_iTriggerPos[client] == TRIGGER_ALL)
+				if(g_bIgnoreCloaked[client] && TF2_IsPlayerInCondition(iHitEntity, TFCond_Cloaked))
+					return Plugin_Continue;
+					
+				if(g_bIgnoreDeadRinger[client] && TF2_IsPlayerInCondition(iHitEntity, TFCond_DeadRingered))
+					return Plugin_Continue;
+					
+				bool bShoot = false;
+				int iHitGroup = TR_GetHitGroup(hTrace);
+				
+				if(g_iTriggerPos[client] == TRIGGER_ALL)
+				{
+					if(g_bZoomedOnly[client] && TF2_IsPlayerInCondition(client, TFCond_Zoomed))
+					{
+						bShoot = true;
+					}
+					else if(!g_bZoomedOnly[client])
+					{
+						bShoot = true;
+					}
+				}
+				else if(g_iTriggerPos[client] == TRIGGER_HEAD && iHitGroup == 1)
+				{
+					if(g_bZoomedOnly[client] && TF2_IsPlayerInCondition(client, TFCond_Zoomed))
+					{
+						bShoot = true;
+					}
+					else if(!g_bZoomedOnly[client])
+					{
+						bShoot = true;
+					}
+				}
+				else if(g_iTriggerPos[client] == TRIGGER_TORSO)
+				{
+					if(iHitGroup == 0 || iHitGroup == 2 || iHitGroup == 3 || iHitGroup == 4 || iHitGroup == 5 || iHitGroup == 6 || iHitGroup == 7)
 					{
 						if(g_bZoomedOnly[client] && TF2_IsPlayerInCondition(client, TFCond_Zoomed))
 						{
@@ -370,83 +492,61 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 							bShoot = true;
 						}
 					}
-					else if(g_iTriggerPos[client] == TRIGGER_HEAD && iHitGroup == 1)
-					{
-						if(g_bZoomedOnly[client] && TF2_IsPlayerInCondition(client, TFCond_Zoomed))
-						{
-							bShoot = true;
-						}
-						else if(!g_bZoomedOnly[client])
-						{
-							bShoot = true;
-						}
-					}
-					else if(g_iTriggerPos[client] == TRIGGER_TORSO)
-					{
-						if(iHitGroup == 0 || iHitGroup == 2 || iHitGroup == 3 || iHitGroup == 4 || iHitGroup == 5 || iHitGroup == 6 || iHitGroup == 7)
-						{
-							if(g_bZoomedOnly[client] && TF2_IsPlayerInCondition(client, TFCond_Zoomed))
-							{
-								bShoot = true;
-							}
-							else if(!g_bZoomedOnly[client])
-							{
-								bShoot = true;
-							}
-						}
-					}
-					
-					if(bShoot)
-					{
-						buttons |= IN_ATTACK;
-						bChanged = true;
-					}
-				}
-			}
-			
-			delete hTrace;
-		}
-		
-		if(buttons & IN_JUMP)
-		{	
-			if(GetEntPropEnt(client, Prop_Data, "m_hGroundEntity") == -1)
-			{
-				if(g_bAutoStrafe[client])
-				{
-					if(mouse[0] < 0)
-						vel[1] = -450.0;
-					else if(mouse[0] > 0)
-						vel[1] = 450.0;
-					
-					while(angles[1] > 180)
-						angles[1] -= 360;
-					
-					while(angles[1] < -180)
-						angles[1] += 360;
-					
-					if(angles[0] > 89.0)
-						angles[0] = 89.0;
-					
-					if (angles[0] < -89.0)
-						angles[0] = -89.0;
-					
-					angles[2] = 0.0;
-					
-					bChanged = true;
 				}
 				
-				if(g_bBhop[client])
-					buttons &= ~IN_JUMP;
-			}
-			else if(g_bBhop[client])
-			{
-				buttons |= IN_JUMP;
+				if(bShoot)
+				{
+					buttons |= IN_ATTACK;
+					bChanged = true;
+				}
 			}
 		}
 		
-		if(bChanged)
-			return Plugin_Changed;
+		delete hTrace;
 	}
+	
+	if(buttons & IN_JUMP)
+	{	
+		if(GetEntPropEnt(client, Prop_Data, "m_hGroundEntity") == -1)
+		{
+			if(g_bAutoStrafe[client])
+			{
+				if(mouse[0] < 0)
+					vel[1] = -450.0;
+				else if(mouse[0] > 0)
+					vel[1] = 450.0;
+				
+				while(angles[1] > 180)
+					angles[1] -= 360;
+				
+				while(angles[1] < -180)
+					angles[1] += 360;
+				
+				if(angles[0] > 89.0)
+					angles[0] = 89.0;
+				
+				if (angles[0] < -89.0)
+					angles[0] = -89.0;
+				
+				angles[2] = 0.0;
+				
+				bChanged = true;
+			}
+			
+			if(g_bBhop[client])
+			{
+				buttons &= ~IN_DUCK;
+				buttons &= ~IN_JUMP;
+			}
+		}
+		else if(g_bBhop[client])
+		{
+			buttons |= IN_JUMP;
+		}
+	}
+	
+	if(bChanged)
+		return Plugin_Changed;
 	
 	return Plugin_Continue;
 }
@@ -484,6 +584,73 @@ stock void TE_FireBullets(float vecOrigin[3], float vecAngles0, float vecAngles1
 	TE_WriteFloat("m_flSpread", flSpread);
 	TE_WriteNum("m_bCritical", bCritical);
 	TE_SendToAll();
+}
+
+stock bool TF2_IsKillable(int client)
+{
+	if(TF2_IsPlayerInCondition(client, TFCond_Ubercharged) 
+	|| TF2_IsPlayerInCondition(client, TFCond_UberchargedHidden) 
+	|| TF2_IsPlayerInCondition(client, TFCond_UberchargedCanteen)
+	|| TF2_IsPlayerInCondition(client, TFCond_Bonked)
+	|| GetEntProp(client, Prop_Data, "m_takedamage") != 2)
+	{
+		return false;
+	}
+	
+	return true;
+}
+
+stock int FindTargetInViewCone(int iViewer, float iOffz = 0.0)
+{
+	float flPos[3];
+	GetClientEyePosition(iViewer, flPos);
+	
+	float flBestDistance = 99999.0;
+	int iBestTarget = -1;
+
+	for(int i = 1; i <= MaxClients; i++)
+	{
+		if(i != iViewer && IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) != GetClientTeam(iViewer) && TF2_IsKillable(i))
+		{
+			float flTPos[3];
+			GetClientAbsOrigin(i, flTPos);
+			
+			float flMaxs[3];
+			GetEntPropVector(i, Prop_Send, "m_vecMaxs", flMaxs);
+			flTPos[2] += flMaxs[2] / 2;
+			
+			TR_TraceRayFilter(flPos, flTPos, MASK_SHOT, RayType_EndPoint, AimTargetFilter, iViewer);
+			if(TR_DidHit())
+			{
+				int entity = TR_GetEntityIndex();
+				if(entity == i)
+				{
+					float flDistance = GetVectorDistance(flPos, flTPos);
+			
+					if(flDistance < flBestDistance)
+					{
+						flBestDistance = flDistance;
+						iBestTarget = i;
+					}
+				}
+			}
+		}
+	}
+
+	return iBestTarget;
+}
+
+public bool AimTargetFilter(int entity, int contentsMask, any iExclude)
+{
+    return !(entity == iExclude);
+}
+
+stock void ClampAngle(float flAngles[3])
+{
+	while(flAngles[0] > 89.0)  flAngles[0] -= 360.0;
+	while(flAngles[0] < -89.0) flAngles[0] += 360.0;
+	while(flAngles[1] > 180.0) flAngles[1] -= 360.0;
+	while(flAngles[1] <-180.0) flAngles[1] += 360.0;
 }
 
 stock bool ClientViews(int Viewer, int Target, float fMaxDistance = 0.0, float fThreshold = 0.73)

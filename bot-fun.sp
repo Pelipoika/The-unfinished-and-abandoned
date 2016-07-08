@@ -89,10 +89,10 @@ public void OnPluginStart()
 	
 	Handle hConf = LoadGameConfigFile("bot-control");
 	
-	if(LookupOffset(g_iOffsetWeaponRestrictions, "CTFPlayer", "m_iCampaignMedals")) g_iOffsetWeaponRestrictions += GameConfGetOffset(hConf, "m_nWeaponRestrict");
-	if(LookupOffset(g_iOffsetBotAttribs,         "CTFPlayer", "m_iCampaignMedals")) g_iOffsetBotAttribs         += GameConfGetOffset(hConf, "m_nBotAttrs");	
-	if(LookupOffset(g_iOffsetAutoJumpMin,        "CTFPlayer", "m_iCampaignMedals")) g_iOffsetAutoJumpMin        += GameConfGetOffset(hConf, "m_flAutoJumpMin");
-	if(LookupOffset(g_iOffsetAutoJumpMax,        "CTFPlayer", "m_iCampaignMedals")) g_iOffsetAutoJumpMax        += GameConfGetOffset(hConf, "m_flAutoJumpMax");
+	if(LookupOffset(g_iOffsetWeaponRestrictions, "CTFPlayer", "m_iPlayerSkinOverride")) g_iOffsetWeaponRestrictions += GameConfGetOffset(hConf, "m_nWeaponRestrict");
+	if(LookupOffset(g_iOffsetBotAttribs,         "CTFPlayer", "m_iPlayerSkinOverride")) g_iOffsetBotAttribs         += GameConfGetOffset(hConf, "m_nBotAttrs");	
+	if(LookupOffset(g_iOffsetAutoJumpMin,        "CTFPlayer", "m_iPlayerSkinOverride")) g_iOffsetAutoJumpMin        += GameConfGetOffset(hConf, "m_flAutoJumpMin");
+	if(LookupOffset(g_iOffsetAutoJumpMax,        "CTFPlayer", "m_iPlayerSkinOverride")) g_iOffsetAutoJumpMax        += GameConfGetOffset(hConf, "m_flAutoJumpMax");
 	
 	delete hConf;
 	

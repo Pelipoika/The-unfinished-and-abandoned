@@ -45,7 +45,7 @@ public Action Command_Rainbow(int client, int argc)
 			if(IsValidEntity(iGlow))
 			{
 				g_iPlayerGlowEntity[client] = EntIndexToEntRef(iGlow);
-				SDKHook(client, SDKHook_GetMaxHealth, OnPlayerThink);
+				SDKHook(client, SDKHook_PreThink, OnPlayerThink);
 			}
 		}
 		else
@@ -55,7 +55,7 @@ public Action Command_Rainbow(int client, int argc)
 			{
 				AcceptEntityInput(iGlow, "Kill");
 				g_iPlayerGlowEntity[client] = INVALID_ENT_REFERENCE;
-				SDKUnhook(client, SDKHook_GetMaxHealth, OnPlayerThink);
+				SDKUnhook(client, SDKHook_PreThink, OnPlayerThink);
 			}
 		}
 	}

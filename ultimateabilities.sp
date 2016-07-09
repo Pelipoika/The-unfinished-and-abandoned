@@ -36,6 +36,7 @@ bool g_bAbilityActive[MAXPLAYERS+1];
 float g_flAbilityTime[MAXPLAYERS+1];
 bool g_bIsMvM;
 Handle g_hHudInfo;
+bool g_bDisabledUlt[MAXPLAYERS + 1];
 
 //Resurrect
 float flDeathPos[MAXPLAYERS+1][3];
@@ -80,12 +81,45 @@ public void OnPluginStart()
 
 	AddNormalSoundHook(NormalSoundHook);
 	
+	RegConsoleCmd("sm_toggleult", Command_ToggleUlt, "Toggle being able to use ultimate with H");
+	
 	RegAdminCmd("sm_fillult", Command_GiveUlt, ADMFLAG_ROOT);
+}
+
+public void OnClientPutInServer(int client)
+{
+	g_iDamageDone[client] = 0;
+	g_bAbilityActive[client] = false;
+	g_flAbilityTime[client] = 0.0;
+	g_bDisabledUlt[client] = false;
+	
+	//Deadeye
+	g_iTarget[client] = 0;
+	g_bLocked[client] = false;
+	
+	//Grapple
+	g_bGrappling[client] = false;
+}
+
+public Action Command_ToggleUlt(int client, int args)
+{
+	if(g_bDisabledUlt[client])
+	{
+		g_bDisabledUlt[client] = false;
+		PrintToChat(client, "[ULTIMATE] You can now activate your ultimate again by pressing the ultimate key");
+	}
+	else
+	{
+		g_bDisabledUlt[client] = true;
+		PrintToChat(client, "[ULTIMATE] You will no longer be able to activate your ultimate");
+	}
+	
+	return Plugin_Handled;
 }
 
 public Action Command_GiveUlt(int client, int args)
 {
-	g_iDamageDone[client] += 100;
+	g_iDamageDone[client] += 1000;
 	PrintCenterText(client, "Damage Done %i", g_iDamageDone[client]);
 	
 	return Plugin_Handled;
@@ -127,7 +161,7 @@ public void OnMapStart()
 
 public Action OnClientCommandKeyValues(int client, KeyValues kv)
 {
-	if(g_bIsMvM && TF2_GetClientTeam(client) == TFTeam_Blue)
+	if(g_bIsMvM && TF2_GetClientTeam(client) == TFTeam_Blue || g_bDisabledUlt[client])
 		return Plugin_Continue;
 
 	char strCmd[256];
@@ -147,7 +181,7 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 		case TFClass_Spy:		iDmg = DMG_SPY;
 	}
 	
-	if(StrEqual(strCmd, "+use_action_slot_item_server") && client > 0 && client <= MaxClients && IsClientInGame(client) && IsPlayerAlive(client) && g_iDamageDone[client] >= iDmg && !g_bAbilityActive[client])
+	if(StrEqual(strCmd, "+use_action_slot_item_server") && IsPlayerAlive(client) && g_iDamageDone[client] >= iDmg && !g_bAbilityActive[client])
 	{
 		MeleeDare(client);
 
@@ -316,13 +350,13 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 					EmitSoundToAll("misc/cp_harbor_red_whistle.wav", client, _, _, _, 0.25);
 				
 				int iPrimary = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary);
-				TF2Attrib_SetByName(iPrimary, "fire rate bonus", 0.5);
+				TF2Attrib_SetByName(iPrimary, "fire rate bonus HIDDEN", 0.5);
 				
 				int iSecondary = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary);
-				TF2Attrib_SetByName(iSecondary, "fire rate bonus", 0.5);
+				TF2Attrib_SetByName(iSecondary, "fire rate bonus HIDDEN", 0.5);
 				
 				int iMelee = GetPlayerWeaponSlot(client, TFWeaponSlot_Melee);
-				TF2Attrib_SetByName(iMelee, "melee attack rate bonus", 0.5);
+				TF2Attrib_SetByName(iMelee, "fire rate bonus HIDDEN", 0.5);
 				TF2Attrib_SetByName(iMelee, "Construction rate increased", 2.0);
 				
 				Particle_Create(client, "ghost_appearation", 20.0, 2.0);
@@ -564,6 +598,9 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	}
 	else
 	{
+		if(g_bDisabledUlt[client])
+			return Plugin_Continue;
+	
 		char strProgressBar[64];
 
 		if(flPercentage == 100.0)
@@ -639,7 +676,7 @@ void EndAbilities(int client)
 			float flValue = 0.0;
 				
 			int iPrimary = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary);
-			pAttrib = TF2Attrib_GetByName(iPrimary, "fire rate bonus");
+			pAttrib = TF2Attrib_GetByName(iPrimary, "fire rate bonus HIDDEN");
 			if(pAttrib != Address_Null)
 			{
 				flValue = TF2Attrib_GetValue(pAttrib);
@@ -648,14 +685,14 @@ void EndAbilities(int client)
 				flValue = TF2Attrib_GetValue(pAttrib);
 				if(flValue == 1.0)
 				{
-					TF2Attrib_RemoveByName(iPrimary, "fire rate bonus");
+					TF2Attrib_RemoveByName(iPrimary, "fire rate bonus HIDDEN");
 				}
 				
 				TF2Attrib_ClearCache(iPrimary);
 			}
 			
 			int iSecondary = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary);
-			pAttrib = TF2Attrib_GetByName(iSecondary, "fire rate bonus");
+			pAttrib = TF2Attrib_GetByName(iSecondary, "fire rate bonus HIDDEN");
 			if(pAttrib != Address_Null)
 			{
 				flValue = TF2Attrib_GetValue(pAttrib);
@@ -664,14 +701,14 @@ void EndAbilities(int client)
 				flValue = TF2Attrib_GetValue(pAttrib);
 				if(flValue == 1.0)
 				{
-					TF2Attrib_RemoveByName(iSecondary, "fire rate bonus");
+					TF2Attrib_RemoveByName(iSecondary, "fire rate bonus HIDDEN");
 				}
 				
 				TF2Attrib_ClearCache(iSecondary);
 			}
 			
 			int iMelee = GetPlayerWeaponSlot(client, TFWeaponSlot_Melee);
-			pAttrib = TF2Attrib_GetByName(iMelee, "melee attack rate bonus");
+			pAttrib = TF2Attrib_GetByName(iMelee, "fire rate bonus HIDDEN");
 			if(pAttrib != Address_Null)
 			{
 				flValue = TF2Attrib_GetValue(pAttrib);
@@ -680,7 +717,7 @@ void EndAbilities(int client)
 				flValue = TF2Attrib_GetValue(pAttrib);
 				if(flValue == 1.0)
 				{
-					TF2Attrib_RemoveByName(iMelee, "melee attack rate bonus");
+					TF2Attrib_RemoveByName(iMelee, "fire rate bonus HIDDEN");
 				}
 				
 				TF2Attrib_ClearCache(iMelee);

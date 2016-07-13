@@ -1,2 +1,2 @@
 # The-unfinished-and-abandoned
-Contains my unfinished and or abandoned SM projects
+Contains some of my SourceMod 1.7 projects

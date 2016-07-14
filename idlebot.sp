@@ -92,7 +92,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 		
 	if(!IsPlayerAlive(client))
 	{
-		//This will bug out once we spawn and break out pathing
+		//Dont break once we spawn and break out pathing
 		flNextStuckCheck[client] = GetGameTime() + 5.0;
 		return Plugin_Continue;
 	}
@@ -109,29 +109,8 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 		//Save our patient
 		g_iLastPatient[client] = iPatient;
 		
-		float flPPos[3], flPos[3];
-		GetClientAbsOrigin(iPatient, flPPos);
-		GetClientAbsOrigin(client, flPos);
-	
-		float flMaxs[3], flMins[3];
-		GetEntPropVector(client, Prop_Send, "m_vecMaxs", flMaxs);
-		GetEntPropVector(client, Prop_Send, "m_vecMins", flMins);
-		
-		flMaxs[0] += 2.5;
-		flMaxs[1] += 2.5;
-		flMins[0] -= 2.5;
-		flMins[1] -= 2.5;
-		
-		flPos[2] += 18.0;
-		
-		//Perform a wall check to see if we are near any obstacles we should try jump over
-		Handle TraceRay = TR_TraceHullFilterEx(flPos, flPos, flMins, flMaxs, MASK_PLAYERSOLID, TraceFilterSelf, client);
-		
-		bool bHit = TR_DidHit(TraceRay);
-		if (bHit)
+		if(TF2_IsNextToWall(client))
 			iButtons |= IN_JUMP;
-		
-		delete TraceRay;
 		
 		int iHealTarget = -1;
 		
@@ -152,16 +131,18 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 					int iSlot = GetSlotFromPlayerWeapon(client, iAWeapon);
 					if(iSlot != TFWeaponSlot_Secondary)
 					{
-						char strClass[64];
-						GetEntityClassname(iSecondary, strClass, sizeof(strClass));
-						
-						FakeClientCommand(client, "use %s", strClass);
-					//	SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iSecondary);
+						TF2_EquipWeapon(client, iSecondary);
 					}
 				}
 			}
-		
-			TF2_LookAt(client, iPatient);
+			
+			float flMax[3], flEPos[3];
+			GetClientAbsOrigin(iPatient, flEPos);
+			GetEntPropVector(iPatient, Prop_Send, "m_vecMaxs", flMax);
+			
+			flEPos[2] -= flMax[2] / 2;
+			
+			TF2_LookAtPos(client, flEPos, 0.1);
 			
 			//Try to switch medigun targets
 			if(iHealTarget != iPatient)
@@ -190,15 +171,17 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 						int iSlot = GetSlotFromPlayerWeapon(client, iAWeapon);
 						if(iSlot != TFWeaponSlot_Primary)
 						{
-							char strClass[64];
-							GetEntityClassname(iPrimary, strClass, sizeof(strClass));
-							
-							FakeClientCommand(client, "use %s", strClass);
-						//	SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iPrimary);
+							TF2_EquipWeapon(client, iPrimary);
 						}
 						else
 						{
-							TF2_LookAt(client, iEnemy);
+							float flMax[3], flEPos[3];
+							GetClientAbsOrigin(iEnemy, flEPos);
+							GetEntPropVector(iEnemy, Prop_Send, "m_vecMaxs", flMax);
+							
+							flEPos[2] -= flMax[2] / 2;
+							
+							TF2_LookAtPos(client, flEPos, 0.1);
 							
 							iButtons |= IN_ATTACK;
 							bChanged = true;
@@ -233,7 +216,8 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 						
 						g_iTargetNode[client]--;
 					}
-				
+					
+					float flPos[3]
 					GetClientAbsOrigin(client, flPos);
 				
 					float flGoPos[3];
@@ -266,21 +250,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 						
 					TE_SendToClient(client);
 					
-					//Perform magic to walk towards our goal node
-					float newmove[3];
-					SubtractVectors(flGoPos, flPos, newmove);
-
-					newmove[1] = -newmove[1];
-					
-					float sin = Sine(fAng[1] * FLOAT_PI / 180.0);
-					float cos = Cosine(fAng[1] * FLOAT_PI / 180.0);
-					
-					fVel[0] = cos * newmove[0] - sin * newmove[1];
-					fVel[1] = sin * newmove[0] + cos * newmove[1];
-					
-					NormalizeVector(fVel, fVel);
-					ScaleVector(fVel, 450.0);
-					
+					TF2_MoveTo(client, flGoPos, fVel, fAng);
 					bChanged = true;
 					
 					flGoPos[2] = flPos[2];
@@ -299,9 +269,11 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 					//Position ourselves behind out patient if we have LOS to them and are healing them
 					if(bHasLOS && iHealTarget > 0 && iHealTarget <= MaxClients && IsClientInGame(iHealTarget))
 					{
-						float flPosition[3], flAngles[3];
+						float flPos[3], flPosition[3], flAngles[3];
+						GetClientAbsOrigin(client, flPos);
 						GetClientAbsOrigin(iHealTarget, flPosition);
 						GetClientEyeAngles(iHealTarget, flAngles);
+
 						flAngles[0] = 0.0;
 						
 						float vForward[3];
@@ -309,43 +281,11 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 						flPosition[0] -= (vForward[0] * 90);
 						flPosition[1] -= (vForward[1] * 90);
 						flPosition[2] -= (vForward[2] * 90);
-						
-						//Show a giant vertical beam at our goal node
-						TE_SetupBeamPoints(flPos,
-							flPosition,
-							g_iPathLaserModelIndex,
-							g_iPathLaserModelIndex,
-							0,
-							30,
-							0.1,
-							5.0,
-							5.0,
-							1, 
-							0.0,
-							{255, 0, 255, 255},
-							30);
-							
-						TE_SendToClient(client);
-						
-						flPosition[2] = flPos[2];
+
 						float flGoalDist = GetVectorDistance(flPosition, flPos);
 						if(flGoalDist >= 40.0)
-						{							
-							//Perform magic to position ourselves behind our patient
-							float newmove[3];
-							SubtractVectors(flPosition, flPos, newmove);
-							
-							newmove[1] = -newmove[1];
-							
-							float sin = Sine(fAng[1] * FLOAT_PI / 180.0);
-							float cos = Cosine(fAng[1] * FLOAT_PI / 180.0);						
-							
-							fVel[0] = cos * newmove[0] - sin * newmove[1];
-							fVel[1] = sin * newmove[0] + cos * newmove[1];
-							
-							NormalizeVector(fVel, fVel);
-							ScaleVector(fVel, 450.0);
-							
+						{
+							TF2_MoveTo(client, flPosition, fVel, fAng);
 							bChanged = true;
 						}
 					}
@@ -360,7 +300,11 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 			iButtons &= ~IN_JUMP;
 		
 			g_hPositions[client].Clear();
-		 
+		 	
+		 	float flPos[3], flPPos[3];
+		 	GetClientAbsOrigin(iPatient, flPPos);
+		 	GetClientAbsOrigin(client, flPos);
+		 	
 		 	flPos[2] += 15.0;
 		 	flPPos[2] += 15.0;
 		 
@@ -432,7 +376,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 					g_iPathLaserModelIndex,
 					0,
 					30,
-					0.5,
+					0.25,
 					5.0,
 					5.0,
 					5, 
@@ -443,7 +387,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 				TE_SendToClient(client);
 			}
 			
-			flNextPathUpdate[client] = GetGameTime() + 0.5;
+			flNextPathUpdate[client] = GetGameTime() + 0.25;
 			
 			g_iTargetNode[client] = g_hPositions[client].Length - 2;
 		}
@@ -452,40 +396,36 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 	return bChanged ? Plugin_Changed : Plugin_Continue;
 }
 
-#define X = 1
-#define Y = 0
-
-stock void TF2_LookAt(int client, int iTarget)
+stock void TF2_EquipWeapon(int client, int iWeapon)
 {
-	//We want to aim at the center of the client
-	float flPos[3], flPPos[3], flMaxs[3];
-	GetClientAbsOrigin(client, flPos);
-	GetClientAbsOrigin(iTarget, flPPos);
-	GetEntPropVector(iTarget, Prop_Send, "m_vecMaxs", flMaxs);
-	flPPos[2] -= flMaxs[2] / 3;
+	char strClass[64];
+	GetEntityClassname(iWeapon, strClass, sizeof(strClass));
 	
-	float flAng[3], flTAng[3];
-	GetClientEyeAngles(client, flAng);
-	GetClientEyeAngles(iTarget, flTAng);
-	
-	// get normalised direction from target to client
-	float desired_dir[3];
-	MakeVectorFromPoints(flPos, flPPos, desired_dir);
-	GetVectorAngles(desired_dir, desired_dir);
-	
-	// ease the current direction to the target direction
-	flAng[0] += AngleNormalize(desired_dir[0] - flAng[0]) * 0.1;
-	flAng[1] += AngleNormalize(desired_dir[1] - flAng[1]) * 0.1;
-
-//	PrintCenterText(client, "flAng %f %f %f\nflTAng %f %f %f\ndesired_dir %f %f %f\nAngleDifference %i", flAng[0], flAng[1], flAng[2], 
-//																										  flTAng[0], flTAng[1], flTAng[2], 
-//																										  desired_dir[0], desired_dir[1], desired_dir[2], 
-//																										  AngleDifference(flAng[1], flTAng[1]));	
-
-	TeleportEntity(client, NULL_VECTOR, flAng, NULL_VECTOR);
+	FakeClientCommand(client, "use %s", strClass);
 }
 
-stock void TF2_LookAtPos(int client, float flPPos[3])
+stock void TF2_MoveTo(int client, float flGoal[3], float fVel[3], float fAng[3])
+{
+	float flPos[3];
+	GetClientAbsOrigin(client, flPos);
+
+	//Perform magic to position ourselves behind our patient
+	float newmove[3];
+	SubtractVectors(flGoal, flPos, newmove);
+	
+	newmove[1] = -newmove[1];
+	
+	float sin = Sine(fAng[1] * FLOAT_PI / 180.0);
+	float cos = Cosine(fAng[1] * FLOAT_PI / 180.0);						
+	
+	fVel[0] = cos * newmove[0] - sin * newmove[1];
+	fVel[1] = sin * newmove[0] + cos * newmove[1];
+	
+	NormalizeVector(fVel, fVel);
+	ScaleVector(fVel, 450.0);
+}
+
+stock void TF2_LookAtPos(int client, float flPPos[3], float flAimSpeed = 0.05)
 {
 	//We want to aim at the center of the client
 	float flPos[3];
@@ -500,8 +440,8 @@ stock void TF2_LookAtPos(int client, float flPPos[3])
 	GetVectorAngles(desired_dir, desired_dir);
 	
 	// ease the current direction to the target direction
-	flAng[0] += AngleNormalize(desired_dir[0] - flAng[0]) * 0.1;
-	flAng[1] += AngleNormalize(desired_dir[1] - flAng[1]) * 0.1;
+	flAng[0] += AngleNormalize(desired_dir[0] - flAng[0]) * flAimSpeed;
+	flAng[1] += AngleNormalize(desired_dir[1] - flAng[1]) * flAimSpeed;
 
 	TeleportEntity(client, NULL_VECTOR, flAng, NULL_VECTOR);
 }
@@ -530,6 +470,32 @@ stock float AngleNormalize(float angle)
 stock float fmodf(float number, float denom)
 {
 	return number - RoundToFloor(number / denom) * denom;
+}
+
+stock bool TF2_IsNextToWall(int client)
+{
+	float flPos[3];
+	GetClientAbsOrigin(client, flPos);
+	
+	float flMaxs[3], flMins[3];
+	GetEntPropVector(client, Prop_Send, "m_vecMaxs", flMaxs);
+	GetEntPropVector(client, Prop_Send, "m_vecMins", flMins);
+	
+	flMaxs[0] += 2.5;
+	flMaxs[1] += 2.5;
+	flMins[0] -= 2.5;
+	flMins[1] -= 2.5;
+	
+	flPos[2] += 18.0;
+	
+	//Perform a wall check to see if we are near any obstacles we should try jump over
+	Handle TraceRay = TR_TraceHullFilterEx(flPos, flPos, flMins, flMaxs, MASK_PLAYERSOLID, TraceFilterSelf, client);
+	
+	bool bHit = TR_DidHit(TraceRay);	
+	
+	delete TraceRay;
+	
+	return bHit;
 }
 
 stock int GetSlotFromPlayerWeapon(int iClient, int iWeapon)

@@ -5,6 +5,14 @@
 
 #pragma newdecls required
 
+enum TFWeaponType
+{
+	TFWeaponType_Generic   = 0,
+	TFWeaponType_Jar       = 1,
+	TFWeaponType_Edible    = 2,
+	TFWeaponType_Sapper    = 3
+}
+
 int g_iPathLaserModelIndex = -1;
 int iResource = -1;
 Handle g_hHudInfo;
@@ -99,239 +107,319 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 	
 	bool bChanged = false;
 	
-	int iPatient = TF2_GetPlayerThatNeedsHealing(client);
-	int iEnemy = 0;
+	if(TF2_IsNextToWall(client))
+		iButtons |= IN_JUMP;
 	
-	bool bHasLOS = false;
-	
-	if(iPatient > 0)
+	//Always crouch jump
+	if(GetEntProp(client, Prop_Send, "m_bJumping"))
 	{
-		//Save our patient
-		g_iLastPatient[client] = iPatient;
-		
-		if(TF2_IsNextToWall(client))
-			iButtons |= IN_JUMP;
-		
-		int iHealTarget = -1;
-		
-		//Check line of sigh
-		bHasLOS = Client_Cansee(client, iPatient);
-		if(bHasLOS && TF2_GetPlayerClass(client) == TFClass_Medic)
-		{
-			//If we can see our patient, switch to medigun if not active
-			int iSecondary = GetPlayerWeaponSlot(client, TFWeaponSlot_Secondary);
-			if(IsValidEntity(iSecondary))
+		iButtons |= IN_DUCK
+		bChanged = true;
+	}
+	
+	TFClassType class = TF2_GetPlayerClass(client);	
+	
+	if(class == TFClass_Medic)
+	{
+		int iPatient = TF2_GetPlayerThatNeedsHealing(client);
+		if(iPatient > 0)
+		{				
+			float flPos[3], flTPos[3];
+			GetClientEyePosition(client, flPos);
+			GetClientEyePosition(iPatient, flTPos);
+			
+			float flDistance = GetVectorDistance(flPos, flTPos);
+			
+			//Save our patient
+			g_iLastPatient[client] = iPatient;
+			
+			//Check line of sigh
+			bool bHasLOS = Client_Cansee(client, iPatient);
+			if(bHasLOS && flDistance <= 400.0)
 			{
-				//Get our mediguns healtarget to use for later
-				iHealTarget = GetEntPropEnt(iSecondary, Prop_Send, "m_hHealingTarget");
-		
-				int iAWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
-				if(IsValidEntity(iAWeapon))
+				int iHealTarget = -1;
+			
+				//If we can see our patient and are in heal range, switch to medigun if not active and start healing our target
+				int iSecondary = GetPlayerWeaponSlot(client, TFWeaponSlot_Secondary);
+				if(IsValidEntity(iSecondary))
 				{
-					int iSlot = GetSlotFromPlayerWeapon(client, iAWeapon);
-					if(iSlot != TFWeaponSlot_Secondary)
-					{
-						TF2_EquipWeapon(client, iSecondary);
-					}
-				}
-			}
-			
-			float flMax[3], flEPos[3];
-			GetClientAbsOrigin(iPatient, flEPos);
-			GetEntPropVector(iPatient, Prop_Send, "m_vecMaxs", flMax);
-			
-			flEPos[2] -= flMax[2] / 2;
-			
-			TF2_LookAtPos(client, flEPos, 0.1);
-			
-			//Try to switch medigun targets
-			if(iHealTarget != iPatient)
-			{
-				if(flNextAttack[client] <= GetGameTime())
-				{
-					iButtons |= IN_ATTACK;
-					flNextAttack[client] = GetGameTime() + 0.5;
-					bChanged = true;
-				}	
-			}
-		}
-		else
-		{
-			//Nobody to heal, DM
-			iEnemy = FindNearestEnemy(client, 1000.0);
-			if(iEnemy > 0)
-			{
-				//If we can see our patient, switch to medigun if not active
-				int iPrimary = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary);
-				if(IsValidEntity(iPrimary))
-				{
+					//Get our mediguns healtarget to use for later
+					iHealTarget = GetEntPropEnt(iSecondary, Prop_Send, "m_hHealingTarget");
+					
 					int iAWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
 					if(IsValidEntity(iAWeapon))
 					{
 						int iSlot = GetSlotFromPlayerWeapon(client, iAWeapon);
-						if(iSlot != TFWeaponSlot_Primary)
+						if(iSlot != TFWeaponSlot_Secondary)
 						{
-							TF2_EquipWeapon(client, iPrimary);
-						}
-						else
-						{
-							float flMax[3], flEPos[3];
-							GetClientAbsOrigin(iEnemy, flEPos);
-							GetEntPropVector(iEnemy, Prop_Send, "m_vecMaxs", flMax);
-							
-							flEPos[2] -= flMax[2] / 2;
-							
-							TF2_LookAtPos(client, flEPos, 0.1);
-							
-							iButtons |= IN_ATTACK;
-							bChanged = true;
+							TF2_EquipWeapon(client, iSecondary);
 						}
 					}
-				}				
-			}
-		}
-		
-		if(g_hPositions[client] != null)
-		{
-			SetHudTextParams(-0.6, 0.55, 0.1, 255, 255, 255, 255, 0, 0.0, 0.0, 0.0);
-			ShowSyncHudText(client, g_hHudInfo, "Target: %N\nLine of sight: %s", iPatient, bHasLOS ? "Yes" : "No");
-			
-			//Navigate our path
-			if(g_iTargetNode[client] >= 0 && g_iTargetNode[client] < g_hPositions[client].Length)
-			{
-				//Crouch jump
-				if(GetEntProp(client, Prop_Send, "m_bJumping"))
-				{
-					iButtons |= IN_DUCK
-					bChanged = true;
 				}
-			
+				
+				float flMax[3], flPatientPos[3];
+				GetClientAbsOrigin(iPatient, flPatientPos);
+				GetEntPropVector(iPatient, Prop_Send, "m_vecMaxs", flMax);
+				
+				flPatientPos[2] += flMax[2] / 2;
+				
+				TF2_LookAtPos(client, flPatientPos, 0.1);
+				
+				//Try to switch medigun targets
 				if(iHealTarget != iPatient)
 				{
-					if(flNextStuckCheck[client] <= GetGameTime())
+					if(flNextAttack[client] <= GetGameTime())
 					{
-						PrintToChat(client, "Stuck. skipping a node...");
-						flNextStuckCheck[client] = GetGameTime() + 5.0;
-						flNextPathUpdate[client] = GetGameTime() + 5.5;
-						
-						g_iTargetNode[client]--;
-					}
-					
-					float flPos[3]
-					GetClientAbsOrigin(client, flPos);
-				
-					float flGoPos[3];
-					g_hPositions[client].GetArray(g_iTargetNode[client], flGoPos);
-					
-					float flToPos[3];
-					flToPos[0] = flGoPos[0];
-					flToPos[1] = flGoPos[1];
-					flToPos[2] = flGoPos[2];
-					
-					if(iEnemy <= 0 && !bHasLOS)
-						TF2_LookAtPos(client, flToPos);
-						
-					flToPos[2] += 80.0;
-					
-					//Show a giant vertical beam at our goal node
-					TE_SetupBeamPoints(flGoPos,
-						flToPos,
-						g_iPathLaserModelIndex,
-						g_iPathLaserModelIndex,
-						0,
-						30,
-						0.1,
-						5.0,
-						5.0,
-						5, 
-						0.0,
-						{255, 0, 0, 255},
-						30);
-						
-					TE_SendToClient(client);
-					
-					TF2_MoveTo(client, flGoPos, fVel, fAng);
-					bChanged = true;
-					
-					flGoPos[2] = flPos[2];
-					float flNodeDist = GetVectorDistance(flGoPos, flPos);					
-
-					if(flNodeDist <= 25.0)
-					{
-						//Moving between nodes shouldnt take more than 5 seconds
-						flNextStuckCheck[client] = GetGameTime() + 5.0;
-						
-						g_iTargetNode[client]--;
+						iButtons |= IN_ATTACK;
+						flNextAttack[client] = GetGameTime() + 0.5;
+						bChanged = true;
 					}
 				}
 				else
 				{
-					//Position ourselves behind out patient if we have LOS to them and are healing them
-					if(bHasLOS && iHealTarget > 0 && iHealTarget <= MaxClients && IsClientInGame(iHealTarget))
+					//Position ourselves behind our patient
+					float flPosition[3], flAngles[3];
+					GetClientAbsOrigin(client, flPos);
+					GetClientAbsOrigin(iHealTarget, flPosition);
+					GetClientEyeAngles(iHealTarget, flAngles);
+
+					flAngles[0] = 0.0;
+					
+					float vForward[3];
+					GetAngleVectors(flAngles, vForward, NULL_VECTOR, NULL_VECTOR);
+					flPosition[0] -= (vForward[0] * 90);
+					flPosition[1] -= (vForward[1] * 90);
+					flPosition[2] -= (vForward[2] * 90);
+
+					float flGoalDist = GetVectorDistance(flPosition, flPos);
+					if(flGoalDist >= 40.0)
 					{
-						float flPos[3], flPosition[3], flAngles[3];
-						GetClientAbsOrigin(client, flPos);
-						GetClientAbsOrigin(iHealTarget, flPosition);
-						GetClientEyeAngles(iHealTarget, flAngles);
-
-						flAngles[0] = 0.0;
-						
-						float vForward[3];
-						GetAngleVectors(flAngles, vForward, NULL_VECTOR, NULL_VECTOR);
-						flPosition[0] -= (vForward[0] * 90);
-						flPosition[1] -= (vForward[1] * 90);
-						flPosition[2] -= (vForward[2] * 90);
-
-						float flGoalDist = GetVectorDistance(flPosition, flPos);
-						if(flGoalDist >= 40.0)
-						{
-							TF2_MoveTo(client, flPosition, fVel, fAng);
-							bChanged = true;
-						}
+						TF2_MoveTo(client, flPosition, fVel, fAng);
 					}
-				
+					
+					//We arent stuck if we are healing our target
 					flNextStuckCheck[client] = GetGameTime() + 5.0;
 				}
 			}
+			else
+			{
+				//Not close enough to our target or we can't see them, Heal nearby teammates or shoot visible enemies
+				int iEnemy = FindNearestVisibleEnemy(client, 1000.0);
+				if(iEnemy > 0)
+				{
+					TF2_EquipBestWeaponForThreat(client, iEnemy);
+					
+					float flMax[3], flEnemyPos[3];
+					GetClientAbsOrigin(iEnemy, flEnemyPos);
+					GetEntPropVector(iEnemy, Prop_Send, "m_vecMaxs", flMax);
+					
+					int iActiveWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+					if(GetPlayerWeaponSlot(client, TFWeaponSlot_Melee) == iActiveWeapon)
+					{
+						//Just get closer
+						TF2_MoveTo(client, flEnemyPos, fVel, fAng);
+	
+						flNextStuckCheck[client] = GetGameTime() + 5.0;
+					}
+					
+					flEnemyPos[2] += flMax[2] / 2;
+					TF2_LookAtPos(client, flEnemyPos, 0.1);
+					
+					iButtons |= IN_ATTACK;
+					bChanged = true;
+				}
+			}
 		}
-		
-		if (flNextPathUpdate[client] <= GetGameTime())
+	}
+	else
+	{
+		//We are not playing as medic
+		int iEnemy = FindNearestVisibleEnemy(client, 1000.0);
+		if(iEnemy > 0)
 		{
-			iButtons &= ~IN_JUMP;
+			TF2_EquipBestWeaponForThreat(client, iEnemy);
+			
+			TF2_PathTo(client, iEnemy, iButtons, fVel, fAng);
+			
+			float flMax[3], flEnemyPos[3];
+			GetClientAbsOrigin(iEnemy, flEnemyPos);
+			GetEntPropVector(iEnemy, Prop_Send, "m_vecMaxs", flMax);
+			
+			int iActiveWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+			if(GetPlayerWeaponSlot(client, TFWeaponSlot_Melee) == iActiveWeapon)
+			{
+				if(TF2_GetPlayerClass(client) == TFClass_Spy)
+				{
+					bool bReadyToStab = !!GetEntProp(iActiveWeapon, Prop_Send, "m_bReadyToBackstab");
+					
+					//As a spy we should go for backstabs
+					float flPos[3], flAngles[3];
+					GetClientAbsOrigin(client, flPos);
+					GetClientEyeAngles(iEnemy, flAngles);
+					
+					flAngles[0] = 0.0;
+					
+					float vForward[3];
+					GetAngleVectors(flAngles, vForward, NULL_VECTOR, NULL_VECTOR);
+					flEnemyPos[0] -= (vForward[0] * 90);
+					flEnemyPos[1] -= (vForward[1] * 90);
+					flEnemyPos[2] -= (vForward[2] * 90);
+					
+					TF2_MoveTo(client, flEnemyPos, fVel, fAng);
+					
+				//	float flGoalDist = GetVectorDistance(flEnemyPos, flPos);
+					if(bReadyToStab)
+					{
+						//I'm not going to stab you, I'm not going to stab you! HA! I stabbed you!
+						iButtons |= IN_ATTACK;
+						bChanged = true;
+					}
+					else
+					{
+						if(!TF2_IsPlayerInCondition(client, TFCond_Disguised) && !TF2_IsPlayerInCondition(client, TFCond_Disguising))
+						{
+							TF2_DisguisePlayer(client, TF2_GetClientTeam(client) == TFTeam_Blue ? TFTeam_Red : TFTeam_Blue, view_as<TFClassType>(GetRandomInt(1, 9)));
+						}
+					}
+				}
+				else
+				{
+					//Otherwise just get closer
+					float flPos[3];
+					GetClientAbsOrigin(client, flPos);
+					
+					float flGoalDist = GetVectorDistance(flEnemyPos, flPos);
+					if(flGoalDist >= 50.0)
+					{
+						TF2_MoveTo(client, flEnemyPos, fVel, fAng);
+					}
+					
+					iButtons |= IN_ATTACK;
+					bChanged = true;
+				}
+				
+				GetClientAbsOrigin(iEnemy, flEnemyPos);
+				flEnemyPos[2] += flMax[2] / 2;
+				
+				TF2_LookAtPos(client, flEnemyPos, 0.1);
+				
+				flNextStuckCheck[client] = GetGameTime() + 5.0;
+			}
+		}
+		else
+		{
+			//No visible enemies, target the closest one
+			if(TF2_GetPlayerClass(client) == TFClass_Spy)
+			{
+				if(!TF2_IsPlayerInCondition(client, TFCond_Disguised) && !TF2_IsPlayerInCondition(client, TFCond_Disguising))
+				{
+					TF2_DisguisePlayer(client, TF2_GetClientTeam(client) == TFTeam_Blue ? TFTeam_Red : TFTeam_Blue, view_as<TFClassType>(GetRandomInt(1, 9)));
+				}
+			}
+			
+			iEnemy = FindNearestEnemy(client, 999999.0);
+			
+			if(iEnemy > 0)
+			{
+				TF2_PathTo(client, iEnemy, iButtons, fVel, fAng);
+			}
+		}
+	}
+	
+	SetHudTextParams(-0.6, 0.55, 0.1, 255, 255, 255, 255, 0, 0.0, 0.0, 0.0);
+	ShowSyncHudText(client, g_hHudInfo, "Target: %N", g_iLastPatient[client] > 0 ? g_iLastPatient[client] : client);
+	
+	return bChanged ? Plugin_Changed : Plugin_Continue;
+}
+
+stock void TF2_PathTo(int client, int iTarget, int &iButtons, float fVel[3], float fAng[3])
+{
+	if(g_hPositions[client] != null)
+	{
+		//Navigate our path
+		if(g_iTargetNode[client] >= 0 && g_iTargetNode[client] < g_hPositions[client].Length)
+		{
+			if(flNextStuckCheck[client] <= GetGameTime())
+			{
+				PrintToChat(client, "Stuck. skipping a node...");
+				flNextStuckCheck[client] = GetGameTime() + 5.0;
+				flNextPathUpdate[client] = GetGameTime() + 5.5;
+				
+				g_iTargetNode[client]--;
+			}
+			
+			float flPos[3]
+			GetClientAbsOrigin(client, flPos);
 		
-			g_hPositions[client].Clear();
-		 	
-		 	float flPos[3], flPPos[3];
-		 	GetClientAbsOrigin(iPatient, flPPos);
-		 	GetClientAbsOrigin(client, flPos);
-		 	
-		 	flPos[2] += 15.0;
-		 	flPPos[2] += 15.0;
-		 
-			int iStartAreaIndex = NavMesh_GetNearestArea(flPos, false, 3000.0, false);
-			int iGoalAreaIndex  = NavMesh_GetNearestArea(flPPos, false, 3000.0, false);
+			float flGoPos[3];
+			g_hPositions[client].GetArray(g_iTargetNode[client], flGoPos);
 			
-			Handle hAreas = NavMesh_GetAreas();
-			if (hAreas == INVALID_HANDLE) return Plugin_Continue;
-			if (iStartAreaIndex == -1 || iGoalAreaIndex == -1) return Plugin_Continue;
+			float flToPos[3];
+			flToPos[0] = flGoPos[0];
+			flToPos[1] = flGoPos[1];
+			flToPos[2] = flGoPos[2];
 			
-			float flGoalPos[3];
-			NavMeshArea_GetCenter(iGoalAreaIndex, flGoalPos);
+			flToPos[2] += 80.0;
 			
-			float flMaxPathLength = 0.0;
-			float flMaxStepSize = 40.0;
-			int iClosestAreaIndex = 0;
+			//Show a giant vertical beam at our goal node
+			TE_SetupBeamPoints(flGoPos, flToPos, g_iPathLaserModelIndex, g_iPathLaserModelIndex, 0,	30, 0.1, 5.0, 5.0, 5, 0.0, {255, 0, 0, 255}, 30);
+			TE_SendToClient(client);
 			
-			NavMesh_BuildPath(iStartAreaIndex, 
-				iGoalAreaIndex,
-				flGoalPos,
-				NavMeshShortestPathCost,
-				_,
-				iClosestAreaIndex,
-				flMaxPathLength,
-				flMaxStepSize,
-				false);
+			TF2_MoveTo(client, flGoPos, fVel, fAng);
 			
+			flGoPos[2] = flPos[2];
+			float flNodeDist = GetVectorDistance(flGoPos, flPos);					
+
+			if(flNodeDist <= 25.0)
+			{
+				//Moving between nodes shouldnt take more than 5 seconds
+				flNextStuckCheck[client] = GetGameTime() + 5.0;
+				
+				g_iTargetNode[client]--;
+			}
+		}
+	}
+		
+	if (flNextPathUpdate[client] <= GetGameTime())
+	{
+		iButtons &= ~IN_JUMP;
+	
+		g_hPositions[client].Clear();
+	 	
+	 	float flPos[3], flPPos[3];
+	 	GetClientAbsOrigin(iTarget, flPPos);
+	 	GetClientAbsOrigin(client, flPos);
+	 	
+	 	flPos[2] += 15.0;
+	 	flPPos[2] += 15.0;
+	 
+		int iStartAreaIndex = NavMesh_GetNearestArea(flPos, false, 3000.0, false);
+		int iGoalAreaIndex  = NavMesh_GetNearestArea(flPPos, false, 3000.0, false);
+		
+		Handle hAreas = NavMesh_GetAreas();
+		if (hAreas == INVALID_HANDLE)                      return;
+		if (iStartAreaIndex == -1 || iGoalAreaIndex == -1) return;
+		delete hAreas;
+	
+		float flGoalPos[3];
+		NavMeshArea_GetCenter(iGoalAreaIndex, flGoalPos);
+		
+		float flMaxPathLength = 0.0;
+		float flMaxStepSize = 40.0;
+		int iClosestAreaIndex = 0;
+		
+		bool bBuilt = NavMesh_BuildPath(iStartAreaIndex, 
+			iGoalAreaIndex,
+			flGoalPos,
+			NavMeshShortestPathCost,
+			_,
+			iClosestAreaIndex,
+			flMaxPathLength,
+			flMaxStepSize,
+			false);
+		
+		if(bBuilt)
+		{
 			int iTempAreaIndex = iClosestAreaIndex;
 			int iParentAreaIndex = NavMeshArea_GetParent(iTempAreaIndex);
 			int iNavDirection;
@@ -386,22 +474,64 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 					
 				TE_SendToClient(client);
 			}
-			
-			flNextPathUpdate[client] = GetGameTime() + 0.25;
-			
 			g_iTargetNode[client] = g_hPositions[client].Length - 2;
 		}
+		
+		flNextPathUpdate[client] = GetGameTime() + 0.25;
 	}
 	
-	return bChanged ? Plugin_Changed : Plugin_Continue;
+	return;
+}
+
+stock void TF2_EquipBestWeaponForThreat(int client, int iTarget)
+{
+	float flPos[3], flTargetPos[3];
+	GetClientEyePosition(client, flPos);
+	GetClientEyePosition(iTarget, flTargetPos);
+
+	TFClassType class = TF2_GetPlayerClass(client);
+	
+	if(class == TFClass_Spy)
+	{
+		TF2_EquipWeapon(client, GetPlayerWeaponSlot(client, TFWeaponSlot_Melee));
+	}
+	else
+	{
+		float flDistance = GetVectorDistance(flPos, flTargetPos);
+		if(flDistance <= 200.0)
+		{
+			TF2_EquipWeapon(client, GetPlayerWeaponSlot(client, TFWeaponSlot_Melee));
+		}
+		else
+		{
+			TF2_EquipWeapon(client, GetPlayerWeaponSlot(client, TFWeaponSlot_Primary));
+		}
+	}
+}
+
+stock TFWeaponType TF2_GetWeaponType(int iWeapon)
+{
+	char strClass[64];
+	GetEntityNetClass(iWeapon, strClass, sizeof(strClass));
+	
+	TFWeaponType WeaponType = TFWeaponType_Generic;
+	
+	if(StrContains(strClass, "CTFJar", false) != -1)               WeaponType = TFWeaponType_Jar;
+	else if(StrContains(strClass, "CTFLunchBox", false) != -1)     WeaponType = TFWeaponType_Edible;
+	else if(StrContains(strClass, "CTFWeaponSapper", false) != -1) WeaponType = TFWeaponType_Sapper;
+
+	return WeaponType;
 }
 
 stock void TF2_EquipWeapon(int client, int iWeapon)
 {
-	char strClass[64];
-	GetEntityClassname(iWeapon, strClass, sizeof(strClass));
-	
-	FakeClientCommand(client, "use %s", strClass);
+	if(IsValidEntity(iWeapon))
+	{
+		char strClass[64];
+		GetEntityClassname(iWeapon, strClass, sizeof(strClass));
+		
+		FakeClientCommand(client, "use %s", strClass);
+	}
 }
 
 stock void TF2_MoveTo(int client, float flGoal[3], float fVel[3], float fAng[3])
@@ -427,9 +557,8 @@ stock void TF2_MoveTo(int client, float flGoal[3], float fVel[3], float fAng[3])
 
 stock void TF2_LookAtPos(int client, float flPPos[3], float flAimSpeed = 0.05)
 {
-	//We want to aim at the center of the client
 	float flPos[3];
-	GetClientAbsOrigin(client, flPos);
+	GetClientEyePosition(client, flPos);
 
 	float flAng[3];
 	GetClientEyeAngles(client, flAng);
@@ -440,7 +569,7 @@ stock void TF2_LookAtPos(int client, float flPPos[3], float flAimSpeed = 0.05)
 	GetVectorAngles(desired_dir, desired_dir);
 	
 	// ease the current direction to the target direction
-	flAng[0] += AngleNormalize(desired_dir[0] - flAng[0]) * flAimSpeed;
+	flAng[0] += AngleNormalize(desired_dir[0] - flAng[0]) * flAimSpeed;	//Broken
 	flAng[1] += AngleNormalize(desired_dir[1] - flAng[1]) * flAimSpeed;
 
 	TeleportEntity(client, NULL_VECTOR, flAng, NULL_VECTOR);
@@ -569,7 +698,7 @@ stock bool TF2_IsHealable(int client)
 	return true;
 }
 
-stock int FindNearestEnemy(int iViewer, float flMaxDistance = 9999.0)
+stock int FindNearestVisibleEnemy(int iViewer, float flMaxDistance = 9999.0)
 {
 	float flPos[3];
 	GetClientEyePosition(iViewer, flPos);
@@ -602,6 +731,34 @@ stock int FindNearestEnemy(int iViewer, float flMaxDistance = 9999.0)
 						iBestTarget = i;
 					}
 				}
+			}
+		}
+	}
+
+	return iBestTarget;
+}
+
+stock int FindNearestEnemy(int iViewer, float flMaxDistance = 9999.0)
+{
+	float flPos[3];
+	GetClientEyePosition(iViewer, flPos);
+	
+	float flBestDistance = flMaxDistance;
+	int iBestTarget = -1;
+
+	for(int i = 1; i <= MaxClients; i++)
+	{
+		if(i != iViewer && IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) != GetClientTeam(iViewer) && TF2_IsKillable(i))
+		{
+			float flTPos[3];
+			GetClientEyePosition(i, flTPos);
+
+			float flDistance = GetVectorDistance(flPos, flTPos);
+	
+			if(flDistance < flBestDistance)
+			{
+				flBestDistance = flDistance;
+				iBestTarget = i;
 			}
 		}
 	}

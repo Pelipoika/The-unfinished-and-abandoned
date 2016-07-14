@@ -19,7 +19,7 @@ Handle g_hHudInfo;
 
 bool g_bAFK[MAXPLAYERS + 1];
 int g_iTargetNode[MAXPLAYERS + 1];
-int g_iLastPatient[MAXPLAYERS + 1];
+int g_iLastTarget[MAXPLAYERS + 1];
 float flNextPathUpdate[MAXPLAYERS + 1];
 float flNextStuckCheck[MAXPLAYERS + 1];
 float flNextAttack[MAXPLAYERS + 1];
@@ -85,7 +85,7 @@ public Action Command_Idle(int client, int argc)
 		}
 	
 		flNextStuckCheck[client] = GetGameTime() + 5.0;
-		g_iLastPatient[client] = -1;
+		g_iLastTarget[client] = -1;
 		g_bAFK[client] = true;
 		ReplyToCommand(client, "[AFK Bot] On");
 	}
@@ -131,7 +131,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 			float flDistance = GetVectorDistance(flPos, flTPos);
 			
 			//Save our patient
-			g_iLastPatient[client] = iPatient;
+			g_iLastTarget[client] = iPatient;
 			
 			//Check line of sigh
 			bool bHasLOS = Client_Cansee(client, iPatient);
@@ -203,12 +203,15 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 			}
 			else
 			{
+				//Path to our target patient because they are out of range and not visible
 				TF2_PathTo(client, iPatient, iButtons, fVel, fAng);
 			
 				//Not close enough to our target patient or we can't see them, Heal nearby teammates or shoot visible enemies
 				int iEnemy = FindNearestVisibleEnemy(client, 1000.0);
 				if(iEnemy > 0)
 				{
+					g_iLastTarget[client] = iEnemy;
+				
 					TF2_EquipBestWeaponForThreat(client, iEnemy);
 					
 					float flMax[3], flEnemyPos[3];
@@ -239,6 +242,8 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 		int iEnemy = FindNearestVisibleEnemy(client, 1000.0);
 		if(iEnemy > 0)
 		{
+			g_iLastTarget[client] = iEnemy;
+		
 			TF2_EquipBestWeaponForThreat(client, iEnemy);
 			
 			float flMax[3], flEnemyPos[3];
@@ -246,6 +251,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 			GetEntPropVector(iEnemy, Prop_Send, "m_vecMaxs", flMax);
 			
 			int iActiveWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+			//Using melee weapon
 			if(GetPlayerWeaponSlot(client, TFWeaponSlot_Melee) == iActiveWeapon)
 			{
 				if(TF2_GetPlayerClass(client) == TFClass_Spy)
@@ -296,17 +302,12 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 					GetClientAbsOrigin(client, flPos);
 					
 					float flGoalDist = GetVectorDistance(flEnemyPos, flPos);
-					if(flGoalDist >= 50.0 && Client_Cansee(client, iEnemy))
+					if(flGoalDist <= 200.0 && Client_Cansee(client, iEnemy))
 					{
 						TF2_MoveTo(client, flEnemyPos, fVel, fAng);
+						iButtons |= IN_ATTACK;
+						bChanged = true;
 					}
-					else
-					{
-						TF2_PathTo(client, iEnemy, iButtons, fVel, fAng);
-					}
-					
-					iButtons |= IN_ATTACK;
-					bChanged = true;
 				}
 				
 				GetClientAbsOrigin(iEnemy, flEnemyPos);
@@ -315,6 +316,20 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 				TF2_LookAtPos(client, flEnemyPos, 0.1);
 				
 				flNextStuckCheck[client] = GetGameTime() + 5.0;
+			}
+			else
+			{
+				GetClientAbsOrigin(iEnemy, flEnemyPos);
+				flEnemyPos[2] += flMax[2] / 2;
+				
+				TF2_LookAtPos(client, flEnemyPos, 0.1);
+				TF2_PathTo(client, iEnemy, iButtons, fVel, fAng);
+				
+				if(Client_Cansee(client, iEnemy))
+				{
+					iButtons |= IN_ATTACK;
+					bChanged = true;
+				}
 			}
 		}
 		else
@@ -328,17 +343,19 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 				}
 			}
 			
-			iEnemy = FindNearestEnemy(client, 999999.0);
+			iEnemy = FindNearestEnemy(client);
 			
 			if(iEnemy > 0)
 			{
+				g_iLastTarget[client] = iEnemy;
+			
 				TF2_PathTo(client, iEnemy, iButtons, fVel, fAng);
 			}
 		}
 	}
 	
 	SetHudTextParams(-0.6, 0.55, 0.1, 255, 255, 255, 255, 0, 0.0, 0.0, 0.0);
-	ShowSyncHudText(client, g_hHudInfo, "Target: %N", g_iLastPatient[client] > 0 ? g_iLastPatient[client] : client);
+	ShowSyncHudText(client, g_hHudInfo, "Target: %N", g_iLastTarget[client] > 0 ? g_iLastTarget[client] : client);
 	
 	return bChanged ? Plugin_Changed : Plugin_Continue;
 }
@@ -501,14 +518,25 @@ stock void TF2_EquipBestWeaponForThreat(int client, int iTarget)
 	GetClientEyePosition(iTarget, flTargetPos);
 
 	TFClassType class = TF2_GetPlayerClass(client);
+	float flDistance = GetVectorDistance(flPos, flTargetPos);
 	
 	if(class == TFClass_Spy)
 	{
 		TF2_EquipWeapon(client, GetPlayerWeaponSlot(client, TFWeaponSlot_Melee));
 	}
+	else if(class == TFClass_Pyro)
+	{
+		if(flDistance <= 400.0)
+		{
+			TF2_EquipWeapon(client, GetPlayerWeaponSlot(client, TFWeaponSlot_Primary));
+		}
+		else
+		{
+			TF2_EquipWeapon(client, GetPlayerWeaponSlot(client, TFWeaponSlot_Secondary));
+		}
+	}
 	else
 	{
-		float flDistance = GetVectorDistance(flPos, flTargetPos);
 		if(flDistance <= 200.0)
 		{
 			TF2_EquipWeapon(client, GetPlayerWeaponSlot(client, TFWeaponSlot_Melee));
@@ -684,14 +712,14 @@ stock int TF2_GetPlayerThatNeedsHealing(int client)
 	//Nobody needs healing, choose random player
 	if(iBestTarget <= 0 && iPlayercount > 0)
 	{
-		int iLastPatient = g_iLastPatient[client];
+		int iLastPatient = g_iLastTarget[client];
 		if(iLastPatient > 0 && IsClientInGame(iLastPatient) && IsPlayerAlive(iLastPatient))
 		{
 			iBestTarget = iLastPatient;
 		}
 		else
 		{
-			g_iLastPatient[client] = iPlayerarray[GetRandomInt(0, iPlayercount-1)];
+			g_iLastTarget[client] = iPlayerarray[GetRandomInt(0, iPlayercount-1)];
 		}
 	}
 	
@@ -749,7 +777,7 @@ stock int FindNearestVisibleEnemy(int iViewer, float flMaxDistance = 9999.0)
 	return iBestTarget;
 }
 
-stock int FindNearestEnemy(int iViewer, float flMaxDistance = 9999.0)
+stock int FindNearestEnemy(int iViewer, float flMaxDistance = 999999.0)
 {
 	float flPos[3];
 	GetClientEyePosition(iViewer, flPos);

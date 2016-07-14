@@ -123,7 +123,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 	{
 		int iPatient = TF2_GetPlayerThatNeedsHealing(client);
 		if(iPatient > 0)
-		{				
+		{
 			float flPos[3], flTPos[3];
 			GetClientEyePosition(client, flPos);
 			GetClientEyePosition(iPatient, flTPos);
@@ -192,7 +192,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 					flPosition[2] -= (vForward[2] * 90);
 
 					float flGoalDist = GetVectorDistance(flPosition, flPos);
-					if(flGoalDist >= 40.0)
+					if(flGoalDist >= 40.0 && Client_Cansee(client, iHealTarget))
 					{
 						TF2_MoveTo(client, flPosition, fVel, fAng);
 					}
@@ -203,7 +203,9 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 			}
 			else
 			{
-				//Not close enough to our target or we can't see them, Heal nearby teammates or shoot visible enemies
+				TF2_PathTo(client, iPatient, iButtons, fVel, fAng);
+			
+				//Not close enough to our target patient or we can't see them, Heal nearby teammates or shoot visible enemies
 				int iEnemy = FindNearestVisibleEnemy(client, 1000.0);
 				if(iEnemy > 0)
 				{
@@ -239,8 +241,6 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 		{
 			TF2_EquipBestWeaponForThreat(client, iEnemy);
 			
-			TF2_PathTo(client, iEnemy, iButtons, fVel, fAng);
-			
 			float flMax[3], flEnemyPos[3];
 			GetClientAbsOrigin(iEnemy, flEnemyPos);
 			GetEntPropVector(iEnemy, Prop_Send, "m_vecMaxs", flMax);
@@ -261,13 +261,20 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 					
 					float vForward[3];
 					GetAngleVectors(flAngles, vForward, NULL_VECTOR, NULL_VECTOR);
-					flEnemyPos[0] -= (vForward[0] * 90);
-					flEnemyPos[1] -= (vForward[1] * 90);
-					flEnemyPos[2] -= (vForward[2] * 90);
+					flEnemyPos[0] -= (vForward[0] * 60);
+					flEnemyPos[1] -= (vForward[1] * 60);
+					flEnemyPos[2] -= (vForward[2] * 60);
 					
-					TF2_MoveTo(client, flEnemyPos, fVel, fAng);
+					float flGoalDist = GetVectorDistance(flEnemyPos, flPos);
+					if(flGoalDist <= 200.0 && Client_Cansee(client, iEnemy))
+					{
+						TF2_MoveTo(client, flEnemyPos, fVel, fAng);
+					}
+					else
+					{
+						TF2_PathTo(client, iEnemy, iButtons, fVel, fAng);
+					}
 					
-				//	float flGoalDist = GetVectorDistance(flEnemyPos, flPos);
 					if(bReadyToStab)
 					{
 						//I'm not going to stab you, I'm not going to stab you! HA! I stabbed you!
@@ -289,9 +296,13 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 					GetClientAbsOrigin(client, flPos);
 					
 					float flGoalDist = GetVectorDistance(flEnemyPos, flPos);
-					if(flGoalDist >= 50.0)
+					if(flGoalDist >= 50.0 && Client_Cansee(client, iEnemy))
 					{
 						TF2_MoveTo(client, flEnemyPos, fVel, fAng);
+					}
+					else
+					{
+						TF2_PathTo(client, iEnemy, iButtons, fVel, fAng);
 					}
 					
 					iButtons |= IN_ATTACK;

@@ -267,14 +267,30 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 					
 					float vForward[3];
 					GetAngleVectors(flAngles, vForward, NULL_VECTOR, NULL_VECTOR);
-					flEnemyPos[0] -= (vForward[0] * 60);
-					flEnemyPos[1] -= (vForward[1] * 60);
-					flEnemyPos[2] -= (vForward[2] * 60);
+					flEnemyPos[0] -= (vForward[0] * 50);
+					flEnemyPos[1] -= (vForward[1] * 50);
+					flEnemyPos[2] -= (vForward[2] * 50);
 					
 					float flGoalDist = GetVectorDistance(flEnemyPos, flPos);
 					if(flGoalDist <= 200.0 && Client_Cansee(client, iEnemy))
 					{
 						TF2_MoveTo(client, flEnemyPos, fVel, fAng);
+						
+						float flBotAng[3], flTargetAng[3];
+						GetClientEyeAngles(client, flBotAng);
+						GetClientEyeAngles(iEnemy, flTargetAng);
+						int iAngleDiff = AngleDifference(flBotAng[1], flTargetAng[1]);
+
+						if(iAngleDiff > 90)
+						{
+							//Move right
+							fVel[1] = 450.0;
+						}
+						else if(iAngleDiff < -90)
+						{
+							//Move left
+							fVel[1] = -450.0;
+						}
 					}
 					else
 					{
@@ -622,11 +638,11 @@ stock void TF2_LookAtPos(int client, float flPPos[3], float flAimSpeed = 0.05)
 	TeleportEntity(client, NULL_VECTOR, flAng, NULL_VECTOR);
 }
 
-//int AngleDifference(float angle1, float angle2)
-//{
- //   int diff = RoundToNearest((angle2 - angle1 + 180)) % 360 - 180;
-//    return diff < -180 ? diff + 360 : diff;
-//}
+stock int AngleDifference(float angle1, float angle2)
+{
+	int diff = RoundToNearest((angle2 - angle1 + 180)) % 360 - 180;
+	return diff < -180 ? diff + 360 : diff;
+}
 
 stock float AngleNormalize(float angle)
 {
@@ -672,6 +688,11 @@ stock bool TF2_IsNextToWall(int client)
 	delete TraceRay;
 	
 	return bHit;
+}
+
+stock bool TF2_WeaponHasAmmo(int iWeapon)
+{
+	
 }
 
 stock int GetSlotFromPlayerWeapon(int iClient, int iWeapon)

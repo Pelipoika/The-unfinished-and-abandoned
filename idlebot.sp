@@ -100,7 +100,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 		
 	if(!IsPlayerAlive(client))
 	{
-		//Dont break once we spawn and break out pathing
+		//Dont break our pathfinding once we spawn
 		flNextStuckCheck[client] = GetGameTime() + 5.0;
 		return Plugin_Continue;
 	}
@@ -205,7 +205,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 			{
 				//Path to our target patient because they are out of range and not visible
 				TF2_PathTo(client, iPatient, iButtons, fVel, fAng);
-			
+
 				//Not close enough to our target patient or we can't see them, Heal nearby teammates or shoot visible enemies
 				int iEnemy = FindNearestVisibleEnemy(client, 1000.0);
 				if(iEnemy > 0)
@@ -343,6 +343,9 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 				}
 			}
 			
+			if(iEnemy <= 0)
+				flNextStuckCheck[client] = GetGameTime() + 5.0;
+			
 			iEnemy = FindNearestEnemy(client);
 			
 			if(iEnemy > 0)
@@ -350,6 +353,11 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 				g_iLastTarget[client] = iEnemy;
 			
 				TF2_PathTo(client, iEnemy, iButtons, fVel, fAng);
+			}
+			else
+			{
+				//We can't be stuck if we are not doing anything
+				flNextStuckCheck[client] = GetGameTime() + 5.0;
 			}
 		}
 	}
@@ -537,7 +545,7 @@ stock void TF2_EquipBestWeaponForThreat(int client, int iTarget)
 	}
 	else
 	{
-		if(flDistance <= 200.0)
+		if(flDistance <= 100.0)
 		{
 			TF2_EquipWeapon(client, GetPlayerWeaponSlot(client, TFWeaponSlot_Melee));
 		}

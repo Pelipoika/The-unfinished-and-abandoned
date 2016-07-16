@@ -8,13 +8,13 @@
 
 #pragma newdecls required
 
-#define DMG_SCOUT    300
+#define DMG_SCOUT    600
 #define DMG_SOLDIER  2000
-#define DMG_PYRO     1000
+#define DMG_PYRO     2000
 #define DMG_DEMO     2000
 #define DMG_HEAVY    2000
 #define DMG_ENGINEER 2000
-#define DMG_MEDIC    100
+#define DMG_MEDIC    300
 #define DMG_SNIPER   300
 #define DMG_SPY      2000
 
@@ -300,30 +300,37 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 			}
 			case TFClass_Medic:
 			{
+				float flPos[3];
+				GetClientAbsOrigin(client, flPos);
+				
 				int iReviveCount = 0;
 				
 				for(int i = 1; i <= MaxClients; i++)
 				{
 					if(IsClientInGame(i) && !IsPlayerAlive(i) && TF2_GetClientTeam(i) == TF2_GetClientTeam(client))
 					{
-						iReviveCount++;
-					
-						TF2_RespawnPlayer(i);
+						float flDistance = GetVectorDistance(flPos, flDeathPos[i]);
+						if(flDistance <= 1000.0)
+						{
+							iReviveCount++;
 						
-						float flTimeImmunity = 3.0;
-						
-						TF2_AddCondition(i, TFCond_UberchargedCanteen, flTimeImmunity);
-						TeleportEntity(i, flDeathPos[i], flDeathAng[i], NULL_VECTOR);
-						
-						Particle_Create(i, "teleporter_mvm_bot_persist", 0.0, flTimeImmunity);
-						
-						SetVariantString("randomnum:30");
-						AcceptEntityInput(i, "AddContext");
-
-						SetVariantString("TLK_RESURRECTED");
-						AcceptEntityInput(i, "SpeakResponseConcept");
-
-						AcceptEntityInput(i, "ClearContext");
+							TF2_RespawnPlayer(i);
+							
+							float flTimeImmunity = 3.0;
+							
+							TF2_AddCondition(i, TFCond_UberchargedCanteen, flTimeImmunity);
+							TeleportEntity(i, flDeathPos[i], flDeathAng[i], NULL_VECTOR);
+							
+							Particle_Create(i, "teleporter_mvm_bot_persist", 0.0, flTimeImmunity);
+							
+							SetVariantString("randomnum:30");
+							AcceptEntityInput(i, "AddContext");
+	
+							SetVariantString("TLK_RESURRECTED");
+							AcceptEntityInput(i, "SpeakResponseConcept");
+	
+							AcceptEntityInput(i, "ClearContext");
+						}
 					}
 				}
 				
@@ -609,7 +616,33 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			{
 				case TFClass_Scout:		Format(strProgressBar, sizeof(strProgressBar), "REWIND");
 				case TFClass_Engineer:	Format(strProgressBar, sizeof(strProgressBar), "MOLTEN CORE");
-				case TFClass_Medic:		Format(strProgressBar, sizeof(strProgressBar), "RESURRECT");
+				case TFClass_Medic:		
+				{
+					float flPos[3];
+					GetClientAbsOrigin(client, flPos);
+				
+					int iReviveCount = 0;
+				
+					for(int i = 1; i <= MaxClients; i++)
+					{
+						if(IsClientInGame(i) && !IsPlayerAlive(i) && TF2_GetClientTeam(i) == TF2_GetClientTeam(client))
+						{
+							float flDistance = GetVectorDistance(flPos, flDeathPos[i]);
+							if(flDistance <= 1000.0)
+							{
+								iReviveCount++;
+							}
+						}
+					}
+					
+					if(iReviveCount > 0)
+					{
+						SetHudTextParams(-1.0, 0.25, 0.1, 255, 0, 0, 0, 0, 0.0, 0.0, 0.0);
+						ShowHudText(client, -1, "(☠x%i)\nTEAMMATE DOWN", iReviveCount);
+					}
+					
+					Format(strProgressBar, sizeof(strProgressBar), "RESURRECT");
+				}
 				case TFClass_Heavy:		Format(strProgressBar, sizeof(strProgressBar), "SHIELD");
 				case TFClass_Pyro:		Format(strProgressBar, sizeof(strProgressBar), "GRAVITON SURGE");
 				case TFClass_Spy:		Format(strProgressBar, sizeof(strProgressBar), "DEADEYE");			//TODO: shoots every enemy in his line of sight. The weaker his targets are, the faster he’ll line up a killshot.
@@ -844,8 +877,8 @@ int CreateLauncher(int client, float flPos[3], float flAng[3])
 	DispatchKeyValue(ent, "ModelOverride", "models/weapons/w_models/w_rocket_airstrike/w_rocket_airstrike.mdl");
 //	DispatchKeyValue(ent, "ModelOverride", "models/buildables/sentry3_rockets.mdl");
 	DispatchKeyValue(ent, "WeaponType", "0");
-	DispatchKeyValue(ent, "SpeedMin", "600");
-	DispatchKeyValue(ent, "SpeedMax", "1100");
+	DispatchKeyValue(ent, "SpeedMin", "1980");
+	DispatchKeyValue(ent, "SpeedMax", "1980");
 	DispatchKeyValue(ent, "Damage", "50");
 	DispatchKeyValue(ent, "SplashRadius", "100");
 	DispatchKeyValue(ent, "SpreadAngle", "5");
@@ -853,7 +886,7 @@ int CreateLauncher(int client, float flPos[3], float flAng[3])
 	
 	SetEntPropEnt(ent, Prop_Send, "m_hOwnerEntity", client);
 
-	CreateTimer(0.15, Timer_FireRocket, EntIndexToEntRef(ent), TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+	CreateTimer(0.10, Timer_FireRocket, EntIndexToEntRef(ent), TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 	
 	SetVariantString("OnUser1 !self:ClearParent::2.95:1");
 	AcceptEntityInput(ent, "AddOutput");

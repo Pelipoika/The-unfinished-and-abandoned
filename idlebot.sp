@@ -13,6 +13,8 @@ enum TFWeaponType
 	TFWeaponType_Sapper    = 3
 }
 
+#define HEALTH_CRITICAL = 50;
+
 int g_iPathLaserModelIndex = -1;
 int iResource = -1;
 Handle g_hHudInfo;
@@ -24,6 +26,11 @@ float flNextPathUpdate[MAXPLAYERS + 1];
 float flNextStuckCheck[MAXPLAYERS + 1];
 float flNextAttack[MAXPLAYERS + 1];
 ArrayList g_hPositions[MAXPLAYERS + 1];
+
+//TODO
+//Make medic bot pop uber if health drops below 50
+//Class priority
+//Scout bot should run for money
 
 public Plugin myinfo = 
 {
@@ -233,6 +240,14 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 					iButtons |= IN_ATTACK;
 					bChanged = true;
 				}
+				else
+				{
+					float flLookPos[3];
+					if(TF2_GetLookAheadPosition(client, flLookPos))
+					{
+						TF2_LookAtPos(client, flLookPos);
+					}
+				}
 			}
 		}
 	}
@@ -369,6 +384,12 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 				g_iLastTarget[client] = iEnemy;
 			
 				TF2_PathTo(client, iEnemy, iButtons, fVel, fAng);
+				
+				float flLookPos[3];
+				if(TF2_GetLookAheadPosition(client, flLookPos))
+				{
+					TF2_LookAtPos(client, flLookPos);
+				}
 			}
 			else
 			{
@@ -468,7 +489,7 @@ stock void TF2_PathTo(int client, int iTarget, int &iButtons, float fVel[3], flo
 			iClosestAreaIndex,
 			flMaxPathLength,
 			flMaxStepSize,
-			false);
+			true);
 		
 		if(bBuilt)
 		{
@@ -529,10 +550,96 @@ stock void TF2_PathTo(int client, int iTarget, int &iButtons, float fVel[3], flo
 			g_iTargetNode[client] = g_hPositions[client].Length - 2;
 		}
 		
-		flNextPathUpdate[client] = GetGameTime() + 0.25;
+		flNextPathUpdate[client] = GetGameTime() + 0.5;
 	}
 	
 	return;
+}
+
+stock bool TF2_GetLookAheadPosition(int client, float flOut[3])
+{
+	//Save me from bad code hell
+
+	if(g_hPositions[client] != null)
+	{
+		int iPointsToLook = 6, iPoints = 0;
+		
+		float flPoint1[3], flPoint2[3], flPoint3[3], flPoint4[3], flPoint5[3], flPoint6[3];
+		
+		for (int i = g_iTargetNode[client]; i > g_iTargetNode[client] - iPointsToLook; i--)
+		{
+			if(i > -1)
+			{
+				iPoints++;
+				
+				float flPosTemp[3];
+				g_hPositions[client].GetArray(i, flPosTemp);
+				
+				switch(iPoints)
+				{
+					case 1:
+					{
+						flPoint1[0] = flPosTemp[0];
+						flPoint1[1] = flPosTemp[1];
+						flPoint1[2] = flPosTemp[2];
+					}
+					case 2:
+					{
+						flPoint2[0] = flPosTemp[0];
+						flPoint2[1] = flPosTemp[1];
+						flPoint2[2] = flPosTemp[2];
+					}
+					case 3:
+					{
+						flPoint3[0] = flPosTemp[0];
+						flPoint3[1] = flPosTemp[1];
+						flPoint3[2] = flPosTemp[2];
+					}
+					case 4:
+					{
+						flPoint4[0] = flPosTemp[0];
+						flPoint4[1] = flPosTemp[1];
+						flPoint4[2] = flPosTemp[2];
+					}
+					case 5:
+					{
+						flPoint5[0] = flPosTemp[0];
+						flPoint5[1] = flPosTemp[1];
+						flPoint5[2] = flPosTemp[2];
+					}
+					case 6:
+					{
+						flPoint6[0] = flPosTemp[0];
+						flPoint6[1] = flPosTemp[1];
+						flPoint6[2] = flPosTemp[2];
+					}
+				}	
+			}
+		}
+		
+		if(iPoints > 0)
+		{
+			flOut[0] = (flPoint1[0] + flPoint2[0] + flPoint3[0] + flPoint4[0] + flPoint5[0] + flPoint6[0]) / iPoints;
+			flOut[1] = (flPoint1[1] + flPoint2[1] + flPoint3[1] + flPoint4[1] + flPoint5[1] + flPoint6[1]) / iPoints;
+			flOut[2] = (flPoint1[2] + flPoint2[2] + flPoint3[2] + flPoint4[2] + flPoint5[2] + flPoint6[2]) / iPoints;
+			
+			flOut[2] += 50.0;
+			
+			float flToPos[3];
+			flToPos[0] = flOut[0];
+			flToPos[1] = flOut[1];
+			flToPos[2] = flOut[2];
+			flToPos[2] += 80.0;
+			
+			//Show a giant vertical beam at our goal node
+			TE_SetupBeamPoints(flOut, flToPos, g_iPathLaserModelIndex, g_iPathLaserModelIndex, 0, 30, 0.1, 5.0, 5.0, 5, 0.0, {0, 0, 255, 255}, 30);
+			TE_SendToClient(client);
+			
+			return true;
+		}
+	}
+	
+	return false;
 }
 
 stock void TF2_EquipBestWeaponForThreat(int client, int iTarget)
@@ -618,7 +725,7 @@ stock void TF2_MoveTo(int client, float flGoal[3], float fVel[3], float fAng[3])
 	ScaleVector(fVel, 450.0);
 }
 
-stock void TF2_LookAtPos(int client, float flPPos[3], float flAimSpeed = 0.05)
+stock void TF2_LookAtPos(int client, float flGoal[3], float flAimSpeed = 0.05)
 {
 	float flPos[3];
 	GetClientEyePosition(client, flPos);
@@ -628,11 +735,11 @@ stock void TF2_LookAtPos(int client, float flPPos[3], float flAimSpeed = 0.05)
 	
 	// get normalised direction from target to client
 	float desired_dir[3];
-	MakeVectorFromPoints(flPos, flPPos, desired_dir);
+	MakeVectorFromPoints(flPos, flGoal, desired_dir);
 	GetVectorAngles(desired_dir, desired_dir);
 	
 	// ease the current direction to the target direction
-	flAng[0] += AngleNormalize(desired_dir[0] - flAng[0]) * flAimSpeed;	//Broken
+	flAng[0] += AngleNormalize(desired_dir[0] - flAng[0]) * flAimSpeed;
 	flAng[1] += AngleNormalize(desired_dir[1] - flAng[1]) * flAimSpeed;
 
 	TeleportEntity(client, NULL_VECTOR, flAng, NULL_VECTOR);
@@ -720,7 +827,7 @@ stock int TF2_GetPlayerThatNeedsHealing(int client)
 	
 	for (int i = 1; i <= MaxClients; i++)
 	{
-		if(i != client && IsClientInGame(i) && IsPlayerAlive(i) && TF2_GetClientTeam(i) == team && TF2_IsHealable(i) && !g_bAFK[i])
+		if(i != client && IsClientInGame(i) && IsPlayerAlive(i) && TF2_GetClientTeam(i) == team && TF2_IsVisible(i) && !g_bAFK[i])
 		{
 			int iHealth = GetClientHealth(i);
 			int iMaxHealth = GetEntProp(iResource, Prop_Send, "m_iMaxHealth", _, i);
@@ -755,7 +862,7 @@ stock int TF2_GetPlayerThatNeedsHealing(int client)
 	return iBestTarget;
 }
 
-stock bool TF2_IsHealable(int client)
+stock bool TF2_IsVisible(int client)
 {
 	if(TF2_IsPlayerInCondition(client, TFCond_DeadRingered)
 	|| TF2_IsPlayerInCondition(client, TFCond_Cloaked))
@@ -776,7 +883,7 @@ stock int FindNearestVisibleEnemy(int iViewer, float flMaxDistance = 9999.0)
 
 	for(int i = 1; i <= MaxClients; i++)
 	{
-		if(i != iViewer && IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) != GetClientTeam(iViewer) && TF2_IsKillable(i))
+		if(i != iViewer && IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) != GetClientTeam(iViewer) && TF2_IsKillable(i) && TF2_IsVisible(i))
 		{
 			float flTPos[3];
 			GetClientAbsOrigin(i, flTPos);
@@ -816,7 +923,7 @@ stock int FindNearestEnemy(int iViewer, float flMaxDistance = 999999.0)
 
 	for(int i = 1; i <= MaxClients; i++)
 	{
-		if(i != iViewer && IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) != GetClientTeam(iViewer) && TF2_IsKillable(i))
+		if(i != iViewer && IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) != GetClientTeam(iViewer) && TF2_IsKillable(i) && TF2_IsVisible(i))
 		{
 			float flTPos[3];
 			GetClientEyePosition(i, flTPos);

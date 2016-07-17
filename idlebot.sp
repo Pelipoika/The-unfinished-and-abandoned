@@ -560,7 +560,7 @@ stock bool TF2_GetLookAheadPosition(int client, float flOut[3])
 {
 	//Save me from bad code hell
 
-	if(g_hPositions[client] != null)
+	if(g_hPositions[client] != null && g_hPositions[client].Length > 0)
 	{
 		int iPointsToLook = 6, iPoints = 0;
 		
@@ -568,7 +568,7 @@ stock bool TF2_GetLookAheadPosition(int client, float flOut[3])
 		
 		for (int i = g_iTargetNode[client]; i > g_iTargetNode[client] - iPointsToLook; i--)
 		{
-			if(i > -1)
+			if(i > 0)
 			{
 				iPoints++;
 				

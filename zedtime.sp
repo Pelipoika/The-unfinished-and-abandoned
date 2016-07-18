@@ -57,6 +57,7 @@ public void OnPluginStart()
 	PrintToServer("[Zed Time] Hooked %i cheat commands", iHooks);
 	
 	HookEvent("player_death", Event_Death);
+	HookEvent("mvm_tank_destroyed_by_players", Event_Notable);
 	
 	RegAdminCmd("sm_slowmo", Command_ToggleSlowmo, ADMFLAG_ROOT);
 }
@@ -75,7 +76,7 @@ public Action Command_ToggleSlowmo(int client, int args)
 
 public Action OnCheatCommand(int client, int args)
 {
-	if(client <= 0 && g_bZedTime)
+	if(client <= 0 || g_bZedTime)
 		return Plugin_Continue;
 
 	PrintToConsole(client, "Cheater! %s", args);
@@ -107,7 +108,12 @@ public void OnMapStart()
 	g_bZedTime = false;
 }
 
-public Action Event_Death(Handle hEvent, char[] name, bool dontBroadcast)
+public void Event_Notable(Event hEvent, char[] name, bool dontBroadcast)
+{
+	EnableSlowmo(0, 25.0);
+}
+
+public void Event_Death(Handle hEvent, char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(GetEventInt(hEvent, "userid"));
 	int attacker = GetClientOfUserId(GetEventInt(hEvent, "attacker"));
@@ -140,12 +146,10 @@ public Action Event_Death(Handle hEvent, char[] name, bool dontBroadcast)
 			flChance += 25.0;
 		}
 		else
-			flChance += 0.5;
+			flChance += 0.1;
 			
 		EnableSlowmo(attacker, flChance);
 	}
-
-	return Plugin_Continue;
 }
 
 public void OnGameFrame()

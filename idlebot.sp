@@ -666,6 +666,17 @@ stock void TF2_EquipBestWeaponForThreat(int client, int iTarget)
 			TF2_EquipWeapon(client, GetPlayerWeaponSlot(client, TFWeaponSlot_Secondary));
 		}
 	}
+	else if(class == TFClass_Medic)
+	{
+		if(flDistance <= 400.0)
+		{
+			TF2_EquipWeapon(client, GetPlayerWeaponSlot(client, TFWeaponSlot_Primary));
+		}
+		else
+		{
+			TF2_EquipWeapon(client, GetPlayerWeaponSlot(client, TFWeaponSlot_Melee));
+		}
+	}
 	else
 	{
 		if(flDistance <= 100.0)

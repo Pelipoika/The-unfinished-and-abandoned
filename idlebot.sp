@@ -63,16 +63,11 @@ public void OnMapStart()
 	iResource = GetPlayerResourceEntity();
 }
 
-public void OnClientDisconnect(int client)
-{
-	g_bAFK[client] = false;
-	delete g_hPositions[client];
-}
-
 public void OnClientPutInServer(int client)
 {
 	delete g_hPositions[client];
 	g_hPositions[client] = new ArrayList(3);
+	g_bAFK[client] = false;
 }
 
 public Action Command_Idle(int client, int argc)

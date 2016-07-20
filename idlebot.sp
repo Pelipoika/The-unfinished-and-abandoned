@@ -99,7 +99,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 {
 	if(IsFakeClient(client) || !g_bAFK[client])
 		return Plugin_Continue;
-		
+	
 	if(!IsPlayerAlive(client))
 	{
 		//Dont break our pathfinding once we spawn
@@ -136,7 +136,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 			g_iLastTarget[client] = iPatient;
 			
 			//Check line of sigh
-			bool bHasLOS = Client_Cansee(client, iPatient);
+			bool bHasLOS = IsClientVisible(client, iPatient);
 			if(bHasLOS && flDistance <= 400.0)
 			{
 				int iHealTarget = -1;
@@ -194,7 +194,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 					flPosition[2] -= (vForward[2] * 90);
 
 					float flGoalDist = GetVectorDistance(flPosition, flPos);
-					if(flGoalDist >= 40.0 && Client_Cansee(client, iHealTarget))
+					if(flGoalDist >= 40.0 && IsClientVisible(client, iHealTarget))
 					{
 						TF2_MoveTo(client, flPosition, fVel, fAng);
 					}
@@ -282,7 +282,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 					flEnemyPos[2] -= (vForward[2] * 50);
 					
 					float flGoalDist = GetVectorDistance(flEnemyPos, flPos);
-					if(flGoalDist <= 200.0 && Client_Cansee(client, iEnemy))
+					if(flGoalDist <= 200.0 && IsClientVisible(client, iEnemy))
 					{
 						TF2_MoveTo(client, flEnemyPos, fVel, fAng);
 						
@@ -328,7 +328,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 					GetClientAbsOrigin(client, flPos);
 					
 					float flGoalDist = GetVectorDistance(flEnemyPos, flPos);
-					if(flGoalDist <= 200.0 && Client_Cansee(client, iEnemy))
+					if(flGoalDist <= 200.0 && IsClientVisible(client, iEnemy))
 					{
 						TF2_MoveTo(client, flEnemyPos, fVel, fAng);
 						iButtons |= IN_ATTACK;
@@ -351,7 +351,7 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 				TF2_LookAtPos(client, flEnemyPos, 0.1);
 				TF2_PathTo(client, iEnemy, iButtons, fVel, fAng);
 				
-				if(Client_Cansee(client, iEnemy))
+				if(IsClientVisible(client, iEnemy))
 				{
 					iButtons |= IN_ATTACK;
 					bChanged = true;
@@ -794,7 +794,7 @@ stock bool TF2_IsNextToWall(int client)
 	flPos[2] += 18.0;
 	
 	//Perform a wall check to see if we are near any obstacles we should try jump over
-	Handle TraceRay = TR_TraceHullFilterEx(flPos, flPos, flMins, flMaxs, MASK_PLAYERSOLID, TraceFilterSelf, client);
+	Handle TraceRay = TR_TraceHullFilterEx(flPos, flPos, flMins, flMaxs, MASK_SOLID, TraceFilterSelf, client);
 	
 	bool bHit = TR_DidHit(TraceRay);	
 	
@@ -898,7 +898,7 @@ stock int FindNearestVisibleEnemy(int iViewer, float flMaxDistance = 9999.0)
 			GetEntPropVector(i, Prop_Send, "m_vecMaxs", flMaxs);
 			flTPos[2] += flMaxs[2] / 2;
 			
-			TR_TraceRayFilter(flPos, flTPos, MASK_SHOT, RayType_EndPoint, AimTargetFilter, iViewer);
+			TR_TraceRayFilter(flPos, flTPos, MASK_VISIBLE_AND_NPCS, RayType_EndPoint, AimTargetFilter, iViewer);
 			if(TR_DidHit())
 			{
 				int entity = TR_GetEntityIndex();
@@ -961,14 +961,107 @@ stock bool TF2_IsKillable(int client)
 	return true;
 }
 
-stock bool Client_Cansee(int iViewer, int iTarget)
+#define BCC_DEFAULT_LOOK_TOWARDS_TOLERANCE 0.9
+
+stock bool IsInFieldOfViewAndVisible(int client, int iEntity, float flCustomTolerance = -1.0)
+{
+	float flTolerance = client > 0 && client <= MaxClients ? Cosine(float(GetEntProp(client, Prop_Send, "m_iDefaultFOV")) * 0.5) : BCC_DEFAULT_LOOK_TOWARDS_TOLERANCE;
+	
+	if(flCustomTolerance != -1.0)
+		flTolerance = flCustomTolerance;
+	
+	float vecForward[3];
+	float vecEyePosition[3]
+	GetClientEyePosition(client, vecEyePosition);
+	
+	float vecEyeAngles[3];
+	GetClientEyeAngles(client, vecEyeAngles);
+	GetAngleVectors(vecEyeAngles, vecForward, NULL_VECTOR, NULL_VECTOR);
+
+	// Check 3 spots, or else when standing right next to someone looking at their eyes, 
+	// the angle will be too great to see their center.
+	float vecToTarget[3];
+	float vecAbsOrigin[3];
+	Entity_GetAbsOrigin(iEntity, vecAbsOrigin);
+	SubtractVectors(vecAbsOrigin, vecEyePosition, vecToTarget);
+	NormalizeVector(vecToTarget, vecToTarget);
+	if(GetVectorDotProduct(vecForward, vecToTarget) >= flTolerance && IsPointVisible(client, vecAbsOrigin))
+		return true;
+
+	float vecCenter[3];
+	Entity_GetCenter(iEntity, vecCenter);
+	SubtractVectors(vecCenter, vecEyePosition, vecToTarget);
+	NormalizeVector(vecToTarget, vecToTarget);
+	if(GetVectorDotProduct(vecForward, vecToTarget) >= flTolerance && IsPointVisible(client, vecCenter))
+		return true;
+
+	float vecEntityEyePosition[3];
+	Entity_GetEyePosition(iEntity, vecEntityEyePosition);
+	SubtractVectors(vecEntityEyePosition, vecEyePosition, vecToTarget);
+	NormalizeVector(vecToTarget, vecToTarget);
+	return (GetVectorDotProduct(vecForward, vecToTarget) >= flTolerance && IsPointVisible(client, vecEntityEyePosition));
+}
+
+stock float Entity_GetEyePosition(int iEntity, float flOut[3])
+{
+	if(iEntity > 0 && iEntity <= MaxClients && IsClientInGame(iEntity))
+	{
+		GetClientEyePosition(iEntity, flOut);
+	}
+	else
+	{
+		float flMaxs[3], flOrigin[3];
+		GetEntPropVector(iEntity, Prop_Send, "m_vecOrigin", flOrigin);
+		GetEntPropVector(iEntity, Prop_Send, "m_vecMaxs", flMaxs);
+		
+		flOut[0] = flOrigin[0];
+		flOut[1] = flOrigin[1];
+		flOut[2] = flOrigin[2] += flMaxs[2];
+	}
+}
+
+stock float Entity_GetCenter(int iEntity, float flOut[3])
+{
+	float flMaxs[3], flOrigin[3];
+	GetEntPropVector(iEntity, Prop_Send, "m_vecOrigin", flOrigin);
+	GetEntPropVector(iEntity, Prop_Send, "m_vecMaxs", flMaxs);
+	
+	flOut[0] = flOrigin[0];
+	flOut[1] = flOrigin[1];
+	flOut[2] = flOrigin[2] -= (flMaxs[2] / 2);
+}
+
+stock float Entity_GetAbsOrigin(int iEntity, float flOut[3])
+{
+	GetEntPropVector(iEntity, Prop_Send, "m_vecOrigin", flOut);
+}
+
+stock bool IsPointVisible(int client, float vecPoint[3])
+{
+	float flStart[3];
+	GetClientEyePosition(client, flStart);
+
+	bool bSee = true;
+	Handle hTrace = TR_TraceRayFilterEx(flStart, vecPoint, MASK_VISIBLE_AND_NPCS, RayType_EndPoint, TraceFilterSelf, client);
+	if(hTrace != INVALID_HANDLE)
+	{
+		if(TR_DidHit(hTrace))
+			bSee = false;
+			
+		delete hTrace;
+	}
+	
+	return bSee;
+}
+
+stock bool IsClientVisible(int iViewer, int iTarget)
 {
 	float flStart[3], flEnd[3];
 	GetClientEyePosition(iTarget, flEnd);
 	GetClientEyePosition(iViewer, flStart);
 
 	bool bSee = true;
-	Handle hTrace = TR_TraceRayFilterEx(flStart, flEnd, MASK_SOLID, RayType_EndPoint, TraceFilterSelf, iViewer);
+	Handle hTrace = TR_TraceRayFilterEx(flStart, flEnd, MASK_VISIBLE_AND_NPCS, RayType_EndPoint, TraceFilterSelf, iViewer);
 	if(hTrace != INVALID_HANDLE)
 	{
 		if(TR_DidHit(hTrace))

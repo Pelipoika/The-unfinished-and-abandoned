@@ -214,6 +214,8 @@ stock void DisplayBotCommandMenuAtItem(int client, int iItem = 0)
 	hMenuCommands.AddItem("3", FindConVar("bot_forceattack").BoolValue ? "Primary Attack: On" : "Primary Attack: Off");
 	hMenuCommands.AddItem("4", FindConVar("bot_forceattack2").BoolValue ? "Secondary Attack: On" : "Secondary Attack: Off");
 	hMenuCommands.AddItem("5", "Bot Refill");
+	hMenuCommands.AddItem("6", "Build Sentry");
+	hMenuCommands.AddItem("7", "Build Dispenser");
 	hMenuCommands.ExitBackButton = true;
 	hMenuCommands.DisplayAt(client, iItem, MENU_TIME_FOREVER);
 }
@@ -306,6 +308,62 @@ public int MenuCommandHandler(Menu menu, MenuAction action, int param1, int para
 			case 5:
 			{
 				ServerCommand("bot_refill");
+				
+				DisplayBotCommandMenuAtItem(param1, GetMenuSelectionPosition());
+			}
+			case 6:
+			{
+				int iTarget = g_iTarget[param1];
+				
+				if(iTarget == -1)
+				{
+					for (int i = 1; i <= MaxClients; i++)
+					{
+						if(IsClientInGame(i) && IsFakeClient(i))
+						{
+							FakeClientCommand(i, "destroy 2");
+							FakeClientCommand(i, "build 2");
+							FindConVar("bot_forceattack").BoolValue = true;
+						}
+					}
+				}
+				else
+				{
+					if (iTarget > 0 && iTarget <= MaxClients && IsClientInGame(iTarget) && IsFakeClient(iTarget))
+					{
+						FakeClientCommand(iTarget, "destroy 2");
+						FakeClientCommand(iTarget, "build 2");
+						FindConVar("bot_forceattack").BoolValue = true;
+					}
+				}
+				
+				DisplayBotCommandMenuAtItem(param1, GetMenuSelectionPosition());
+			}
+			case 7:
+			{
+				int iTarget = g_iTarget[param1];
+				
+				if(iTarget == -1)
+				{
+					for (int i = 1; i <= MaxClients; i++)
+					{
+						if(IsClientInGame(i) && IsFakeClient(i))
+						{
+							FakeClientCommand(i, "destroy 0");
+							FakeClientCommand(i, "build 0");
+							FindConVar("bot_forceattack").BoolValue = true;
+						}
+					}
+				}
+				else
+				{
+					if (iTarget > 0 && iTarget <= MaxClients && IsClientInGame(iTarget) && IsFakeClient(iTarget))
+					{
+						FakeClientCommand(iTarget, "destroy 0");
+						FakeClientCommand(iTarget, "build 0");
+						FindConVar("bot_forceattack").BoolValue = true;
+					}
+				}
 				
 				DisplayBotCommandMenuAtItem(param1, GetMenuSelectionPosition());
 			}

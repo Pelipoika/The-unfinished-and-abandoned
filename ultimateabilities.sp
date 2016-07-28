@@ -58,6 +58,7 @@ ArrayList g_hHealthPoints[MAXPLAYERS + 1];
 #define MODEL_ENGINEER	"models/bots/engineer/bot_engineer.mdl"
 #define MODEL_GRAVITON	"models/empty.mdl"
 #define ENGINE_LOOP		"mvm/giant_heavy/giant_heavy_loop.wav"
+#define MODEL_TRAIN		"models/props_vehicles/train_enginecar.mdl"
 
 //mannpower_imbalance_blue
 //mannpower_imbalance_red
@@ -137,9 +138,11 @@ public void OnMapStart()
 	PrecacheModel(MODEL_GRAVITON);
 	PrecacheModel(MODEL_ENGINEER);
 	PrecacheSound(ENGINE_LOOP);
+	PrecacheModel(MODEL_TRAIN);
 	
 //	g_iPathLaserModelIndex = PrecacheModel("materials/sprites/laserbeam.vmt");
 	
+	PrecacheSound("ambient/alarms/razortrain_horn1.wav");
 	PrecacheSound("misc/cp_harbor_blue_whistle.wav");
 	PrecacheSound("misc/cp_harbor_red_whistle.wav");
 	PrecacheSound("misc/halloween/duck_pickup_pos_01.wav");
@@ -370,22 +373,27 @@ public Action OnClientCommandKeyValues(int client, KeyValues kv)
 			}
 			case TFClass_Sniper:
 			{
-				g_flAbilityTime[client] = GetGameTime() + 12.0;
 				g_iDamageDone[client] = 0;
 				g_bAbilityActive[client] = true;
 			
-				Handle TF2Item = TF2Items_CreateItem(OVERRIDE_ALL|FORCE_GENERATION|PRESERVE_ATTRIBUTES);
-				TF2Items_SetClassname(TF2Item, "tf_weapon_grapplinghook");
-				TF2Items_SetItemIndex(TF2Item, 1152);
-				TF2Items_SetLevel(TF2Item, 100);
-				
-				int ItemEntity = TF2Items_GiveNamedItem(client, TF2Item);
-				delete TF2Item;
-
-				EquipPlayerWeapon(client, ItemEntity);
-
-				FakeClientCommand(client, "use tf_weapon_grapplinghook");
-				SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", ItemEntity);
+				int iWeapon = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
+				if(IsValidEntity(iWeapon))
+				{
+					g_flAbilityTime[client] = GetGameTime() + 12.0;	
+					
+					Handle TF2Item = TF2Items_CreateItem(OVERRIDE_ALL|FORCE_GENERATION|PRESERVE_ATTRIBUTES);
+					TF2Items_SetClassname(TF2Item, "tf_weapon_grapplinghook");
+					TF2Items_SetItemIndex(TF2Item, 1152);
+					TF2Items_SetLevel(TF2Item, 100);
+					
+					int ItemEntity = TF2Items_GiveNamedItem(client, TF2Item);
+					delete TF2Item;
+	
+					EquipPlayerWeapon(client, ItemEntity);
+	
+					FakeClientCommand(client, "use tf_weapon_grapplinghook");
+					SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", ItemEntity);
+				}
 			}
 			case TFClass_Spy:
 			{
@@ -538,18 +546,23 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 					int iGrapple = GetPlayerWeaponSlot(client, view_as<int>(TFWeaponSlot_PDA));
 					if(IsValidEntity(iGrapple))
 					{
-						int iProjectile = GetEntPropEnt(iGrapple, Prop_Send, "m_hProjectile");
-						if(g_bGrappling[client] && !IsValidEntity(iProjectile))
+						char strClass[64];
+						GetEntityClassname(iGrapple, strClass, sizeof(strClass));
+						if(StrEqual(strClass, "tf_weapon_grapplinghook"))
 						{
-							EndAbilities(client);
-						}
-						
-						if(GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon") == iGrapple)
-						{
-							g_bGrappling[client] = true;
-						
-							buttons |= IN_ATTACK;
-							return Plugin_Changed;
+							int iProjectile = GetEntPropEnt(iGrapple, Prop_Send, "m_hProjectile");
+							if(g_bGrappling[client] && !IsValidEntity(iProjectile))
+							{
+								EndAbilities(client);
+							}
+							
+							if(GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon") == iGrapple)
+							{
+								g_bGrappling[client] = true;
+							
+								buttons |= IN_ATTACK;
+								return Plugin_Changed;
+							}
 						}
 					}
 				}
@@ -791,21 +804,25 @@ void EndAbilities(int client)
 			Overlay(client, "\"\"");
 		}
 		case TFClass_Sniper:
-		{
+		{		
 			int iGrapple = GetPlayerWeaponSlot(client, view_as<int>(TFWeaponSlot_PDA));
 			if(IsValidEntity(iGrapple))
 			{
-				int iLastWep = GetEntPropEnt(client, Prop_Data, "m_hLastWeapon");
-				if(IsValidEntity(iLastWep))
+				char strClass[64];
+				GetEntityClassname(iGrapple, strClass, sizeof(strClass));
+				if(StrEqual(strClass, "tf_weapon_grapplinghook"))
 				{
-					char strClass[64];
-					GetEntityClassname(iLastWep, strClass, sizeof(strClass));
-					FakeClientCommand(client, "use %s", strClass);
-					SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iLastWep);
+					int iLastWep = GetEntPropEnt(client, Prop_Data, "m_hLastWeapon");
+					if(IsValidEntity(iLastWep))
+					{
+						GetEntityClassname(iLastWep, strClass, sizeof(strClass));
+						FakeClientCommand(client, "use %s", strClass);
+						SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iLastWep);
+					}
+				
+					TF2_RemoveWeaponSlot(client, TFWeaponSlot_PDA);
+					TF2_RemoveWearable(client, iGrapple);
 				}
-			
-				TF2_RemoveWeaponSlot(client, TFWeaponSlot_PDA);
-				TF2_RemoveWearable(client, iGrapple);
 			}
 			
 			g_bGrappling[client] = false;

@@ -24,7 +24,7 @@ public Plugin myinfo =
 
 public void OnPluginStart()
 {
-	g_hMaps = CreateArray(5);
+	g_hMaps = CreateArray(64);
 
 	g_hGamemodeMenu = CreateMenu(MenuGamemodeHandler);
 	g_hGamemodeMenu.SetTitle("[WorkshopMaps] Select Gamemode\n ");
@@ -40,11 +40,12 @@ public void OnPluginStart()
 	g_hGamemodeMenu.AddItem("SPECIALITY", "Speciality");
 	g_hGamemodeMenu.AddItem("PASS", "Pass Time");
 	g_hGamemodeMenu.AddItem("MANNPOWER", "Mannpower");
+	g_hGamemodeMenu.AddItem("MVM", "Mann vs. Machine");
 	g_hGamemodeMenu.AddItem("RD", "Robot Destruction");
 	g_hGamemodeMenu.ExitButton = true;
 
-	RegAdminCmd("sm_showmaps", Command_ShowMaps, ADMFLAG_ROOT);
-	RegAdminCmd("sm_installmap", Command_ManualMap, ADMFLAG_ROOT);
+	RegAdminCmd("sm_showmaps", Command_ShowMaps, ADMFLAG_BAN);
+	RegAdminCmd("sm_installmap", Command_ManualMap, ADMFLAG_BAN);
 }
  
 public void OnMapStart() 
@@ -58,7 +59,7 @@ stock void Workshop_GetMaps()
 {
 	Handle hDLPack = CreateDataPack();
 	
-	Handle hRequest = SteamWorks_CreateHTTPRequest(k_EHTTPMethodGET, "http://82.197.11.167:9876/");
+	Handle hRequest = SteamWorks_CreateHTTPRequest(k_EHTTPMethodGET, "http://82.197.11.167:3000/workshopdata");
 	SteamWorks_SetHTTPRequestHeaderValue(hRequest, "Pragma", "no-cache");
 	SteamWorks_SetHTTPRequestHeaderValue(hRequest, "Cache-Control", "no-cache");
 	SteamWorks_SetHTTPRequestNetworkActivityTimeout(hRequest, 10);
@@ -74,7 +75,7 @@ public OnSteamWorksHTTPComplete(Handle hRequest, bool bFailure, bool bRequestSuc
 	
 	if (bRequestSuccessful && eStatusCode == k_EHTTPStatusCode200OK)
 	{
-		SteamWorks_WriteHTTPResponseBodyToFile(hRequest, "fuckWebStuff.txt");
+		SteamWorks_WriteHTTPResponseBodyToFile(hRequest, "WorkshopData.txt");
 		ParseMaps();
 	}
 	else
@@ -347,9 +348,9 @@ stock void ParseMaps()
 {
 	g_hMaps.Clear();
 
-	KeyValues kvConfig = new KeyValues("fuckWebStuff");
+	KeyValues kvConfig = new KeyValues("WorkshopData");
 	
-	if (!FileToKeyValues(kvConfig, "fuckWebStuff.txt")) 
+	if (!FileToKeyValues(kvConfig, "WorkshopData.txt")) 
 		SetFailState("Error while parsing the workshop file.");
 		
 	kvConfig.SetEscapeSequences(true);

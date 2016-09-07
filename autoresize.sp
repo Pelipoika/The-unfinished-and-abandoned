@@ -6,6 +6,8 @@
 float g_flModelScale[MAXPLAYERS + 1];
 bool g_bResized[MAXPLAYERS + 1];
 
+#define BODY_SCALE_RATE 0.01
+
 public Plugin myinfo = 
 {
 	name = "[TF2] Auto Resize",
@@ -30,6 +32,9 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 	
 	ScaleVector(flMaxs, g_flModelScale[client]);
 	ScaleVector(flMins, g_flModelScale[client]);
+
+//	ScaleVector(flMaxs, flModelScale);
+//	ScaleVector(flMins, flModelScale);
 	
 	float flPosition[3], flAngles[3];
 	GetClientAbsOrigin(client, flPosition);
@@ -51,23 +56,39 @@ public Action OnPlayerRunCmd(int client, int &iButtons, int &iImpulse, float fVe
 	float flOriginalPos[3];
 	GetClientAbsOrigin(client, flOriginalPos);
 	
-	if (bHit && !g_bResized[client])
+	if (bHit && flModelScale > 1.0)
 	{
-		SetVariantString("1.0");
+		float flNewScale = flModelScale - BODY_SCALE_RATE;
+		char strNewScale[8];
+		FloatToString(flNewScale, strNewScale, sizeof(strNewScale));
+		
+		SetVariantString(strNewScale);
 		AcceptEntityInput(client, "SetModelScale");
+		
+		if(flNewScale <= 1.0)
+		{
+			SetVariantString("1.0");
+			AcceptEntityInput(client, "SetModelScale");
+		}
 		
 		g_bResized[client] = true;
 	}
-	else if(!bHit && g_bResized[client])
+	else if(!bHit && flModelScale < g_flModelScale[client])
 	{
-		char strSize[8];
-		FloatToString(g_flModelScale[client], strSize, sizeof(strSize));
+		float flNewScale = flModelScale + BODY_SCALE_RATE;
+		char strNewScale[8];
+		FloatToString(flNewScale, strNewScale, sizeof(strNewScale));
 		
-		SetVariantString(strSize);
+		SetVariantString(strNewScale);
 		AcceptEntityInput(client, "SetModelScale");
-		
-		g_bResized[client] = false;
+			
+		if(flNewScale >= g_flModelScale[client])
+		{
+			g_bResized[client] = false;
+		}
 	}
+	
+	PrintCenterText(client, "%d %f", g_bResized[client], g_flModelScale[client]);
 	
 	return Plugin_Continue;
 }

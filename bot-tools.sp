@@ -177,7 +177,7 @@ stock char TF2_GetClassName(TFClassType class)
 		case TFClass_Scout:		Format(strClass, sizeof(strClass), "Scout");
 		case TFClass_Sniper:	Format(strClass, sizeof(strClass), "Sniper");
 		case TFClass_Soldier:	Format(strClass, sizeof(strClass), "Soldier");
-		case TFClass_DemoMan:	Format(strClass, sizeof(strClass), "Demo");
+		case TFClass_DemoMan:	Format(strClass, sizeof(strClass), "Demoman");
 		case TFClass_Medic:		Format(strClass, sizeof(strClass), "Medic");
 		case TFClass_Heavy:		Format(strClass, sizeof(strClass), "Heavy");
 		case TFClass_Pyro:		Format(strClass, sizeof(strClass), "Pyro");
@@ -210,12 +210,13 @@ stock void DisplayBotCommandMenuAtItem(int client, int iItem = 0)
 	hMenuCommands.SetTitle(strTitle);
 	hMenuCommands.AddItem("0", "Pick target");
 	hMenuCommands.AddItem("1", "Teleport to me");
-	hMenuCommands.AddItem("2", "Switch weapon");
-	hMenuCommands.AddItem("3", FindConVar("bot_forceattack").BoolValue ? "Primary Attack: On" : "Primary Attack: Off");
-	hMenuCommands.AddItem("4", FindConVar("bot_forceattack2").BoolValue ? "Secondary Attack: On" : "Secondary Attack: Off");
-	hMenuCommands.AddItem("5", "Bot Refill");
-	hMenuCommands.AddItem("6", "Build Sentry");
-	hMenuCommands.AddItem("7", "Build Dispenser");
+	hMenuCommands.AddItem("2", "Look where i'm looking");
+	hMenuCommands.AddItem("3", "Switch weapon");
+	hMenuCommands.AddItem("4", FindConVar("bot_forceattack").BoolValue ? "Primary Attack: On" : "Primary Attack: Off");
+	hMenuCommands.AddItem("5", FindConVar("bot_forceattack2").BoolValue ? "Secondary Attack: On" : "Secondary Attack: Off");
+	hMenuCommands.AddItem("6", "Bot Refill");
+	hMenuCommands.AddItem("7", "Build Sentry");
+	hMenuCommands.AddItem("8", "Build Dispenser");
 	hMenuCommands.ExitBackButton = true;
 	hMenuCommands.DisplayAt(client, iItem, MENU_TIME_FOREVER);
 }
@@ -272,6 +273,33 @@ public int MenuCommandHandler(Menu menu, MenuAction action, int param1, int para
 			}
 			case 2:
 			{
+				float flAng[3];
+				GetClientEyeAngles(param1, flAng);
+				
+				int iTarget = g_iTarget[param1]
+				
+				if(iTarget == -1)
+				{
+					for (int i = 1; i <= MaxClients; i++)
+					{
+						if(IsClientInGame(i) && IsFakeClient(i))
+						{
+							TeleportEntity(i, NULL_VECTOR, flAng, NULL_VECTOR);
+						}
+					}
+				}
+				else
+				{
+					if (iTarget > 0 && iTarget <= MaxClients && IsClientInGame(iTarget) && IsFakeClient(iTarget))
+					{
+						TeleportEntity(iTarget, NULL_VECTOR, flAng, NULL_VECTOR);
+					}
+				}
+				
+				DisplayBotCommandMenuAtItem(param1, GetMenuSelectionPosition());
+			}
+			case 3:
+			{
 				Menu hMenuWeapon = new Menu(MenuWeaponHandler);
 				hMenuWeapon.SetTitle("Switch Weapon To:\n ");
 				hMenuWeapon.AddItem("0", "Primary");
@@ -285,7 +313,7 @@ public int MenuCommandHandler(Menu menu, MenuAction action, int param1, int para
 				hMenuWeapon.ExitBackButton = true;
 				hMenuWeapon.Display(param1, MENU_TIME_FOREVER);
 			}
-			case 3:
+			case 4:
 			{
 				bool bOn = FindConVar("bot_forceattack").BoolValue;
 				if(bOn)
@@ -295,7 +323,7 @@ public int MenuCommandHandler(Menu menu, MenuAction action, int param1, int para
 				
 				DisplayBotCommandMenuAtItem(param1, GetMenuSelectionPosition());
 			}
-			case 4:
+			case 5:
 			{
 				bool bOn = FindConVar("bot_forceattack2").BoolValue;
 				if(bOn)
@@ -305,13 +333,13 @@ public int MenuCommandHandler(Menu menu, MenuAction action, int param1, int para
 				
 				DisplayBotCommandMenuAtItem(param1, GetMenuSelectionPosition());
 			}
-			case 5:
+			case 6:
 			{
 				ServerCommand("bot_refill");
 				
 				DisplayBotCommandMenuAtItem(param1, GetMenuSelectionPosition());
 			}
-			case 6:
+			case 7:
 			{
 				int iTarget = g_iTarget[param1];
 				
@@ -339,7 +367,7 @@ public int MenuCommandHandler(Menu menu, MenuAction action, int param1, int para
 				
 				DisplayBotCommandMenuAtItem(param1, GetMenuSelectionPosition());
 			}
-			case 7:
+			case 8:
 			{
 				int iTarget = g_iTarget[param1];
 				

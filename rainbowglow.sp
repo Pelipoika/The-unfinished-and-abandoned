@@ -7,6 +7,8 @@
 
 int g_iPlayerGlowEntity[MAXPLAYERS + 1];
 
+ConVar g_hRainbowCycleRate;
+
 public Plugin myinfo = 
 {
 	name = "[TF2] Rainbow Glow",
@@ -19,6 +21,8 @@ public Plugin myinfo =
 public void OnPluginStart()
 {
 	RegAdminCmd("sm_rainbowme", Command_Rainbow, ADMFLAG_ROOT);
+	
+	g_hRainbowCycleRate = CreateConVar("sm_rainbow_cycle_rate", "1.0", "Constrols the speed of which the rainbow glow changes color");
 }
 
 public void OnPluginEnd()
@@ -70,11 +74,15 @@ public Action OnPlayerThink(int client)
 	{
 		char strGlowColor[18];
 		
-		int red = RoundToNearest(Cosine(GetGameTime() + client + 0) * 127.5 + 127.5);
-		int grn = RoundToNearest(Cosine(GetGameTime() + client + 2) * 127.5 + 127.5);
-		int blu = RoundToNearest(Cosine(GetGameTime() + client + 4) * 127.5 + 127.5);
+		float flRate = g_hRainbowCycleRate.FloatValue;
+		
+		int red = RoundToNearest(Cosine((GetGameTime() * flRate) + client + 0) * 127.5 + 127.5);
+		int grn = RoundToNearest(Cosine((GetGameTime() * flRate) + client + 2) * 127.5 + 127.5);
+		int blu = RoundToNearest(Cosine((GetGameTime() * flRate) + client + 4) * 127.5 + 127.5);
 		
 		Format(strGlowColor, sizeof(strGlowColor), "%i %i %i %i", red, grn, blu, 255);
+		
+	//	PrintCenterText(client, "%s", strGlowColor);
 		
 		SetVariantString(strGlowColor);
 		AcceptEntityInput(iGlow, "SetGlowColor");
@@ -99,7 +107,7 @@ stock int TF2_CreateGlow(int iEnt)
 	DispatchSpawn(ent);
 	
 	AcceptEntityInput(ent, "Enable");
-	
+
 	return ent;
 }
 

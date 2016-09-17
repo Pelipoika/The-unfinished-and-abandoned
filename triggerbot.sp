@@ -346,8 +346,8 @@ public Action OnSceneSpawned(int entity)
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
-	if(IsFakeClient(client))
-		vel[0] = 500.0;
+//	if(IsFakeClient(client))
+//		vel[0] = 500.0;
 
 	if(IsFakeClient(client) || !IsPlayerAlive(client))
 		return Plugin_Continue;	

@@ -4,6 +4,7 @@
 #include <tf2>
 #include <tf2_stocks>
 #include <tf2attributes>
+#include <utilsext>
 
 #pragma newdecls required;
 
@@ -23,6 +24,7 @@ bool g_bAutoStrafe[MAXPLAYERS+1];
 bool g_bBhop[MAXPLAYERS+1];
 bool g_bNoSpread[MAXPLAYERS+1];
 bool g_bAimbot[MAXPLAYERS+1];
+bool g_bAutoShoot[MAXPLAYERS + 1];
 int g_iTriggerPos[MAXPLAYERS+1];
 
 #define TRIGGER_ALL		-1
@@ -42,7 +44,6 @@ public Plugin myinfo =
 	version = "1.0",
 	url = "http://www.sourcemod.net/plugins.php?author=Pelipoika&search=1"
 };
-
 
 public void OnPluginStart()
 {
@@ -67,6 +68,7 @@ public void OnClientPutInServer(int client)
 	g_bBhop[client] = false;
 	g_bNoSpread[client] = false;
 	g_bAimbot[client] = false;
+	g_bAutoShoot[client] = false;
 	g_iTriggerPos[client] = TRIGGER_ALL;
 }
 
@@ -153,6 +155,11 @@ stock void DisplayHackMenuAtItem(int client, int page = 0)
 		menu.AddItem("13", "Aimbot: On");
 	else
 		menu.AddItem("13", "Aimbot: Off");
+		
+	if(g_bAutoShoot[client])
+		menu.AddItem("14", "Auto Shoot: On");
+	else
+		menu.AddItem("14", "Auto Shoot: Off");
 		
 	menu.ExitButton = true;
 	menu.DisplayAt(client, page, MENU_TIME_FOREVER);
@@ -288,6 +295,13 @@ public int MenuLegitnessHandler(Menu menu, MenuAction action, int param1, int pa
 				else
 					g_bAimbot[param1] = true;	
 			}
+			case 14:
+			{
+				if(g_bAutoShoot[param1])
+					g_bAutoShoot[param1] = false;
+				else
+					g_bAutoShoot[param1] = true;		
+			}
 		}
 		
 		DisplayHackMenuAtItem(param1, GetMenuSelectionPosition());
@@ -332,6 +346,9 @@ public Action OnSceneSpawned(int entity)
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
+	if(IsFakeClient(client))
+		vel[0] = 500.0;
+
 	if(IsFakeClient(client) || !IsPlayerAlive(client))
 		return Plugin_Continue;	
 	
@@ -346,15 +363,18 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		{
 			if(i != client && IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) != GetClientTeam(client) && TF2_IsKillable(i))
 			{
-				float flTPos[3], flPos[3];
-				GetClientAbsOrigin(i, flTPos);
+				float flPos[3];
 				GetClientEyePosition(client, flPos);
+					
+				float vOrigin[3];
+				GetClientAbsOrigin(i, vOrigin);
 				
-				float flMaxs[3];
-				GetEntPropVector(i, Prop_Send, "m_vecMaxs", flMaxs);
-				flTPos[2] += flMaxs[2] / 2;
+				if(g_iTriggerPos[client] == TRIGGER_HEAD)
+					utils_EntityGetBonePosition(i, utils_EntityLookupBone(i, "bip_head"), vOrigin, NULL_VECTOR);
+				else
+					utils_EntityGetBonePosition(i, utils_EntityLookupBone(i, "bip_pelvis"), vOrigin, NULL_VECTOR);
 				
-				TR_TraceRayFilter(flPos, flTPos, MASK_SHOT, RayType_EndPoint, AimTargetFilter, client);
+				TR_TraceRayFilter(flPos, vOrigin, MASK_SHOT, RayType_EndPoint, AimTargetFilter, client);
 				if(TR_DidHit())
 				{
 					int entity = TR_GetEntityIndex();
@@ -384,31 +404,86 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			SetHudTextParams(-0.6, 0.55, 0.1, 255, 0, 0, 0, 0, 0.0, 0.0, 0.0);
 			ShowSyncHudText(client, g_hHudInfo2, "%i VISIBLE:%s", iPlayercount, strTargets);
 		}
-	
-		if(!(buttons & IN_ATTACK))
+		
+		if(!(buttons & IN_ATTACK) && !g_bAutoShoot[client])
 			return Plugin_Continue;
-			
+		
 		int iTarget = FindTargetInViewCone(client);
 		if(iTarget != -1)
 		{
 			SetHudTextParams(0.55, 0.55, 0.1, 0, 255, 0, 0, 0, 0.0, 0.0, 0.0);
 			ShowSyncHudText(client, g_hHudInfo, "[AIMING AT: %N [%i HP]", iTarget, GetEntProp(iTarget, Prop_Send, "m_iHealth"));
 		
-			float flPPos[3], flTPos[3];
+			float flPPos[3], vOrigin[3];
 			GetClientEyePosition(client, flPPos);
-			GetClientAbsOrigin(iTarget, flTPos);
+			GetClientAbsOrigin(iTarget, vOrigin);
 			
-			float flMaxs[3];
-			GetEntPropVector(iTarget, Prop_Send, "m_vecMaxs", flMaxs);
+			if(g_iTriggerPos[client] == TRIGGER_HEAD)
+				utils_EntityGetBonePosition(iTarget, utils_EntityLookupBone(iTarget, "bip_head"), vOrigin, NULL_VECTOR);
+			else
+				utils_EntityGetBonePosition(iTarget, utils_EntityLookupBone(iTarget, "bip_pelvis"), vOrigin, NULL_VECTOR);
 			
-			flTPos[2] += flMaxs[2] / 2;
-		
+			vOrigin[2] += 5.0;
+			
+			static float vOldOrigin[3];
+			static float vOldestOrigin[3];
+			float vDeltaOrigin[3];
+	 	
+			// Calculate the delta (the change in two vector) origin
+			SubtractVectors(vOrigin, vOldestOrigin, vDeltaOrigin);
+			vOldestOrigin = vOldOrigin;
+			vOldOrigin = vOrigin;
+	 
+			// Get the latency
+			float flLatency = GetClientLatency(client, NetFlow_Outgoing);
+	 		
+	 	//	PrintCenterText(client, "flLatency %f", flLatency);
+	 		
+			// Compensate the latency
+			vDeltaOrigin[0] *= (flLatency * -50);
+			vDeltaOrigin[1] *= (flLatency * -50);
+			vDeltaOrigin[2] *= (flLatency * -50);
+	 
+			// Apply the prediction
+			AddVectors(vOrigin, vDeltaOrigin, vOrigin);
+			
 			float flAimDir[3];
-			MakeVectorFromPoints(flPPos, flTPos, flAimDir);
+			MakeVectorFromPoints(flPPos, vOrigin, flAimDir);
 			GetVectorAngles(flAimDir, flAimDir);
 			ClampAngle(flAimDir);
 			
+			if(g_bWaitForCharge[client] && g_bAutoShoot[client])
+			{
+				int iWeapon = GetPlayerWeaponSlot(client, 0);
+				
+				if(IsValidEntity(iWeapon))
+				{
+					//Sniperrifle
+					if(HasEntProp(iWeapon, Prop_Send, "m_flChargedDamage"))
+					{
+						float flDamage = GetEntPropFloat(iWeapon, Prop_Send, "m_flChargedDamage");
+						if (flDamage >= 150.0)
+						{
+							buttons |= IN_ATTACK;
+						}
+					}
+					else //Ambassador
+					{
+						float flLastFireTime = GetGameTime() - GetEntPropFloat(iWeapon, Prop_Send, "m_flLastFireTime");
+						if(flLastFireTime >= 0.95)
+						{
+							buttons |= IN_ATTACK;
+						}
+					}
+				}
+			}
+			else if(g_bAutoShoot[client])
+			{
+				buttons |= IN_ATTACK;
+			}
+			
 			angles = flAimDir;
+		//	TeleportEntity(client, NULL_VECTOR, flAimDir, NULL_VECTOR);
 			
 			bChanged = true;
 		}

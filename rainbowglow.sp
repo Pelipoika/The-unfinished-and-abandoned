@@ -82,7 +82,7 @@ public Action OnPlayerThink(int client)
 		
 		Format(strGlowColor, sizeof(strGlowColor), "%i %i %i %i", red, grn, blu, 255);
 		
-	//	PrintCenterText(client, "%s", strGlowColor);
+		PrintCenterText(client, "%s", strGlowColor);
 		
 		SetVariantString(strGlowColor);
 		AcceptEntityInput(iGlow, "SetGlowColor");
@@ -91,6 +91,9 @@ public Action OnPlayerThink(int client)
 
 stock int TF2_CreateGlow(int iEnt)
 {
+	char oldEntName[64];
+	GetEntPropString(iEnt, Prop_Data, "m_iName", oldEntName, sizeof(oldEntName));
+
 	char strName[126], strClass[64];
 	GetEntityClassname(iEnt, strClass, sizeof(strClass));
 	Format(strName, sizeof(strName), "%s%i", strClass, iEnt);
@@ -107,6 +110,9 @@ stock int TF2_CreateGlow(int iEnt)
 	DispatchSpawn(ent);
 	
 	AcceptEntityInput(ent, "Enable");
+	
+	//Change name back to old name because we don't need it anymore.
+	SetEntPropString(iEnt, Prop_Data, "m_iName", oldEntName);
 
 	return ent;
 }

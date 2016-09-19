@@ -99,14 +99,10 @@ stock int TF2_CreateGlow(int iEnt)
 	Format(strName, sizeof(strName), "%s%i", strClass, iEnt);
 	DispatchKeyValue(iEnt, "targetname", strName);
 	
-	char strGlowColor[18];
-	Format(strGlowColor, sizeof(strGlowColor), "%i %i %i %i", GetRandomInt(0, 255), GetRandomInt(0, 255), GetRandomInt(0, 255), GetRandomInt(180, 255));
-	
 	int ent = CreateEntityByName("tf_glow");
 	DispatchKeyValue(ent, "targetname", "RainbowGlow");
 	DispatchKeyValue(ent, "target", strName);
 	DispatchKeyValue(ent, "Mode", "0");
-	DispatchKeyValue(ent, "GlowColor", strGlowColor);
 	DispatchSpawn(ent);
 	
 	AcceptEntityInput(ent, "Enable");

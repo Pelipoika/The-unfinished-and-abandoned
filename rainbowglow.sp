@@ -82,7 +82,7 @@ public Action OnPlayerThink(int client)
 		
 		Format(strGlowColor, sizeof(strGlowColor), "%i %i %i %i", red, grn, blu, 255);
 		
-		PrintCenterText(client, "%s", strGlowColor);
+	//	PrintCenterText(client, "%s", strGlowColor);
 		
 		SetVariantString(strGlowColor);
 		AcceptEntityInput(iGlow, "SetGlowColor");

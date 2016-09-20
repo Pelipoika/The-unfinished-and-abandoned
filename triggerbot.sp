@@ -423,7 +423,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			else
 				utils_EntityGetBonePosition(iTarget, utils_EntityLookupBone(iTarget, "bip_pelvis"), vOrigin, NULL_VECTOR);
 			
-			vOrigin[2] += 5.0;
+			vOrigin[2] += 3.0;
 			
 			static float vOldOrigin[3];
 			static float vOldestOrigin[3];
@@ -435,14 +435,20 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			vOldOrigin = vOrigin;
 	 
 			// Get the latency
-			float flLatency = GetClientLatency(client, NetFlow_Outgoing);
+			float flLatencyOut  = GetClientLatency(client, NetFlow_Outgoing) * 10;
+	 		float flLatencyIn   = GetClientLatency(client, NetFlow_Incoming) * 10;
+	 		float flLatencyBoth = GetClientLatency(client, NetFlow_Both)     * 10;
 	 		
-	 	//	PrintCenterText(client, "flLatency %f", flLatency);
+	 		float flLatencyOutAvg  = GetClientAvgLatency(client, NetFlow_Outgoing) * 10;
+	 		float flLatencyInAvg   = GetClientAvgLatency(client, NetFlow_Incoming) * 10;
+	 		float flLatencyBothAvg = GetClientAvgLatency(client, NetFlow_Both)     * 10;
+	 		
+	 		PrintCenterText(client, "flLatencyOut %f\nflLatencyIn %f\nflLatencyBoth %f\n-\nflLatencyOutAvg %f\nflLatencyInAvg %f\nflLatencyBothAvg %f", flLatencyOut, flLatencyIn, flLatencyBoth, flLatencyOutAvg, flLatencyInAvg, flLatencyBothAvg);
 	 		
 			// Compensate the latency
-			vDeltaOrigin[0] *= (flLatency * -50);
-			vDeltaOrigin[1] *= (flLatency * -50);
-			vDeltaOrigin[2] *= (flLatency * -50);
+			vDeltaOrigin[0] *= -(flLatencyBothAvg);
+			vDeltaOrigin[1] *= -(flLatencyBothAvg);
+		//	vDeltaOrigin[2] *= -(flLatencyBothAvg);
 	 
 			// Apply the prediction
 			AddVectors(vOrigin, vDeltaOrigin, vOrigin);
@@ -483,7 +489,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			}
 			
 			angles = flAimDir;
-		//	TeleportEntity(client, NULL_VECTOR, flAimDir, NULL_VECTOR);
+			TeleportEntity(client, NULL_VECTOR, flAimDir, NULL_VECTOR);
 			
 			bChanged = true;
 		}

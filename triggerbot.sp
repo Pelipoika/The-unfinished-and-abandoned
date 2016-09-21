@@ -1,7 +1,5 @@
-#include <sourcemod>
 #include <sdktools>
 #include <sdkhooks>
-#include <tf2>
 #include <tf2_stocks>
 #include <tf2attributes>
 #include <utilsext>
@@ -168,90 +166,18 @@ public int MenuLegitnessHandler(Menu menu, MenuAction action, int param1, int pa
 	{
 		switch(param2)
 		{
-			case 0:
-			{
-				if(g_bTriggerBot[param1])
-					g_bTriggerBot[param1] = false;
-				else
-					g_bTriggerBot[param1] = true;
-			}
-			case 1:
-			{
-				if(g_bZoomedOnly[param1])
-					g_bZoomedOnly[param1] = false;
-				else
-					g_bZoomedOnly[param1] = true;
-			}
-			case 2:
-			{
-				if(g_bWaitForCharge[param1])
-					g_bWaitForCharge[param1] = false;
-				else
-					g_bWaitForCharge[param1] = true;
-			}
-			case 3:
-			{
-				if(g_iTriggerPos[param1] == TRIGGER_HEAD)
-					g_iTriggerPos[param1] = TRIGGER_TORSO;
-				else if(g_iTriggerPos[param1] == TRIGGER_TORSO)
-					g_iTriggerPos[param1] = TRIGGER_HEAD;
-			}
-			case 4:
-			{
-				if(g_bIgnoreDeadRinger[param1])
-					g_bIgnoreDeadRinger[param1] = false;
-				else
-					g_bIgnoreDeadRinger[param1] = true;
-			}
-			case 5:
-			{
-				if(g_bIgnoreCloaked[param1])
-					g_bIgnoreCloaked[param1] = false;
-				else
-					g_bIgnoreCloaked[param1] = true;
-			}
-			case 6:
-			{
-				if(g_bIgnoreDisguised[param1])
-					g_bIgnoreDisguised[param1] = false;
-				else
-					g_bIgnoreDisguised[param1] = true;
-			}
-			case 7:
-			{
-				if(g_bAutoBackstab[param1])
-					g_bAutoBackstab[param1] = false;
-				else
-					g_bAutoBackstab[param1] = true;
-			}
-			case 8:
-			{
-				if(g_bNoSlowDown[param1])
-					g_bNoSlowDown[param1] = false;
-				else
-					g_bNoSlowDown[param1] = true;
-			}
-			case 9:
-			{
-				if(g_bAllCrits[param1])
-					g_bAllCrits[param1] = false;
-				else
-					g_bAllCrits[param1] = true;				
-			}
-			case 10:
-			{
-				if(g_bAutoStrafe[param1])
-					g_bAutoStrafe[param1] = false;
-				else
-					g_bAutoStrafe[param1] = true;	
-			}
-			case 11:
-			{
-				if(g_bBhop[param1])
-					g_bBhop[param1] = false;
-				else
-					g_bBhop[param1] = true;	
-			}
+			case 0:  g_bTriggerBot[param1]       = !g_bTriggerBot[param1];
+			case 1:  g_bZoomedOnly[param1]       = !g_bZoomedOnly[param1];
+			case 2:  g_bWaitForCharge[param1]    = !g_bWaitForCharge[param1];
+			case 3:  g_iTriggerPos[param1]       = (g_iTriggerPos[param1] == TRIGGER_HEAD) ? TRIGGER_TORSO : TRIGGER_HEAD;
+			case 4:  g_bIgnoreDeadRinger[param1] = !g_bIgnoreDeadRinger[param1];
+			case 5:  g_bIgnoreCloaked[param1]    = !g_bIgnoreCloaked[param1];
+			case 6:  g_bIgnoreDisguised[param1]  = !g_bIgnoreDisguised[param1];
+			case 7:  g_bAutoBackstab[param1]     = !g_bAutoBackstab[param1];
+			case 8:  g_bNoSlowDown[param1]       = !g_bNoSlowDown[param1];
+			case 9:  g_bAllCrits[param1]         = !g_bAllCrits[param1];
+			case 10: g_bAutoStrafe[param1]       = !g_bAutoStrafe[param1];
+			case 11: g_bBhop[param1]             = !g_bBhop[param1];
 			case 12:
 			{
 				if(g_bNoSpread[param1])
@@ -283,20 +209,8 @@ public int MenuLegitnessHandler(Menu menu, MenuAction action, int param1, int pa
 					}
 				}
 			}
-			case 13:
-			{
-				if(g_bAimbot[param1])
-					g_bAimbot[param1] = false;
-				else
-					g_bAimbot[param1] = true;	
-			}
-			case 14:
-			{
-				if(g_bAutoShoot[param1])
-					g_bAutoShoot[param1] = false;
-				else
-					g_bAutoShoot[param1] = true;		
-			}
+			case 13: g_bAimbot[param1]    = !g_bAimbot[param1];
+			case 14: g_bAutoShoot[param1] = !g_bAutoShoot[param1];
 		}
 		
 		DisplayHackMenuAtItem(param1, GetMenuSelectionPosition());
@@ -353,7 +267,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 
 	if(IsFakeClient(client) || !IsPlayerAlive(client))
 		return Plugin_Continue;	
-	
+		
 	bool bChanged = false;
 	
 	if(g_bAimbot[client])
@@ -434,7 +348,6 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			
 			vOrigin[2] += 2.0;
 			
-			static bool bReady = false;
 			static float vOldOrigin[3];
 			static float vOldestOrigin[3];
 			float vDeltaOrigin[3];
@@ -498,14 +411,10 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				buttons |= IN_ATTACK;
 			}
 			
-			if(bReady)
-			{
-				angles = flAimDir;
-				TeleportEntity(client, NULL_VECTOR, flAimDir, NULL_VECTOR);
-			}
+			angles = flAimDir;
+			TeleportEntity(client, NULL_VECTOR, flAimDir, NULL_VECTOR);
 			
 			bChanged = true;
-			bReady = true;	//We need 1 frame of time to apply prediction, otherwise we will miss if we 1 tap
 		}
 	}
 	

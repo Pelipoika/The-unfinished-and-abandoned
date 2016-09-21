@@ -27,7 +27,6 @@ bool g_bAimbot[MAXPLAYERS+1];
 bool g_bAutoShoot[MAXPLAYERS + 1];
 int g_iTriggerPos[MAXPLAYERS+1];
 
-#define TRIGGER_ALL		-1
 #define TRIGGER_HEAD	1	//1
 #define TRIGGER_TORSO	0	//0 1 2 3 4 5 6 7
 
@@ -69,7 +68,7 @@ public void OnClientPutInServer(int client)
 	g_bNoSpread[client] = false;
 	g_bAimbot[client] = false;
 	g_bAutoShoot[client] = false;
-	g_iTriggerPos[client] = TRIGGER_ALL;
+	g_iTriggerPos[client] = TRIGGER_TORSO;
 }
 
 public Action Command_Trigger(int client, int args)
@@ -99,9 +98,7 @@ stock void DisplayHackMenuAtItem(int client, int page = 0)
 	else
 		menu.AddItem("3", "Sniper - Wait for Charge: Off");
 		
-	if(g_iTriggerPos[client] == TRIGGER_ALL)
-		menu.AddItem("4", "Trigger position: All");
-	else if(g_iTriggerPos[client] == TRIGGER_HEAD)
+	if(g_iTriggerPos[client] == TRIGGER_HEAD)
 		menu.AddItem("4", "Trigger position: Head");
 	else if(g_iTriggerPos[client] == TRIGGER_TORSO)
 		menu.AddItem("4", "Trigger position: Torso");
@@ -194,12 +191,10 @@ public int MenuLegitnessHandler(Menu menu, MenuAction action, int param1, int pa
 			}
 			case 3:
 			{
-				if(g_iTriggerPos[param1] == TRIGGER_ALL)
-					g_iTriggerPos[param1] = TRIGGER_HEAD;
-				else if(g_iTriggerPos[param1] == TRIGGER_HEAD)
+				if(g_iTriggerPos[param1] == TRIGGER_HEAD)
 					g_iTriggerPos[param1] = TRIGGER_TORSO;
 				else if(g_iTriggerPos[param1] == TRIGGER_TORSO)
-					g_iTriggerPos[param1] = TRIGGER_ALL;
+					g_iTriggerPos[param1] = TRIGGER_HEAD;
 			}
 			case 4:
 			{
@@ -346,8 +341,15 @@ public Action OnSceneSpawned(int entity)
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
-//	if(IsFakeClient(client))
-//		vel[0] = 500.0;
+	if(IsFakeClient(client))
+	{
+	//	vel[0] = 500.0;
+		
+		if(GetRandomFloat(1.0, 0.0) > 0.005)
+		{
+	//		buttons |= IN_JUMP
+		}
+	}
 
 	if(IsFakeClient(client) || !IsPlayerAlive(client))
 		return Plugin_Continue;	
@@ -356,6 +358,9 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	
 	if(g_bAimbot[client])
 	{
+		SetEntPropVector(client, Prop_Send, "m_vecPunchAngle", NULL_VECTOR);
+		SetEntPropVector(client, Prop_Send, "m_vecPunchAngleVel", NULL_VECTOR);
+	
 		int iPlayerarray[MAXPLAYERS+1];
 		int iPlayercount;
 		
@@ -369,10 +374,12 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				float vOrigin[3];
 				GetClientAbsOrigin(i, vOrigin);
 				
+				float vNothing[3];
+				
 				if(g_iTriggerPos[client] == TRIGGER_HEAD)
-					utils_EntityGetBonePosition(i, utils_EntityLookupBone(i, "bip_head"), vOrigin, NULL_VECTOR);
+					utils_EntityGetBonePosition(i, utils_EntityLookupBone(i, "bip_head"), vOrigin, vNothing);
 				else
-					utils_EntityGetBonePosition(i, utils_EntityLookupBone(i, "bip_pelvis"), vOrigin, NULL_VECTOR);
+					utils_EntityGetBonePosition(i, utils_EntityLookupBone(i, "bip_pelvis"), vOrigin, vNothing);
 				
 				TR_TraceRayFilter(flPos, vOrigin, MASK_SHOT, RayType_EndPoint, AimTargetFilter, client);
 				if(TR_DidHit())
@@ -418,38 +425,41 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			GetClientEyePosition(client, flPPos);
 			GetClientAbsOrigin(iTarget, vOrigin);
 			
+			float vNothing[3];
+			
 			if(g_iTriggerPos[client] == TRIGGER_HEAD)
-				utils_EntityGetBonePosition(iTarget, utils_EntityLookupBone(iTarget, "bip_head"), vOrigin, NULL_VECTOR);
+				utils_EntityGetBonePosition(iTarget, utils_EntityLookupBone(iTarget, "bip_head"), vOrigin, vNothing);
 			else
-				utils_EntityGetBonePosition(iTarget, utils_EntityLookupBone(iTarget, "bip_pelvis"), vOrigin, NULL_VECTOR);
+				utils_EntityGetBonePosition(iTarget, utils_EntityLookupBone(iTarget, "bip_pelvis"), vOrigin, vNothing);
 			
-			vOrigin[2] += 3.0;
+			vOrigin[2] += 2.0;
 			
+			static bool bReady = false;
 			static float vOldOrigin[3];
 			static float vOldestOrigin[3];
 			float vDeltaOrigin[3];
-	 	
+			
 			// Calculate the delta (the change in two vector) origin
 			SubtractVectors(vOrigin, vOldestOrigin, vDeltaOrigin);
 			vOldestOrigin = vOldOrigin;
 			vOldOrigin = vOrigin;
 	 
 			// Get the latency
-			float flLatencyOut  = GetClientLatency(client, NetFlow_Outgoing) * 10;
-	 		float flLatencyIn   = GetClientLatency(client, NetFlow_Incoming) * 10;
-	 		float flLatencyBoth = GetClientLatency(client, NetFlow_Both)     * 10;
+			float flLatencyOut  = GetClientLatency(client, NetFlow_Outgoing);
+	 		float flLatencyIn   = GetClientLatency(client, NetFlow_Incoming);
+	 		float flLatencyBoth = GetClientLatency(client, NetFlow_Both);
 	 		
-	 		float flLatencyOutAvg  = GetClientAvgLatency(client, NetFlow_Outgoing) * 10;
-	 		float flLatencyInAvg   = GetClientAvgLatency(client, NetFlow_Incoming) * 10;
-	 		float flLatencyBothAvg = GetClientAvgLatency(client, NetFlow_Both)     * 10;
+	 		float flLatencyOutAvg  = GetClientAvgLatency(client, NetFlow_Outgoing);
+	 		float flLatencyInAvg   = GetClientAvgLatency(client, NetFlow_Incoming);
+	 		float flLatencyBothAvg = GetClientAvgLatency(client, NetFlow_Both);
 	 		
 	 		PrintCenterText(client, "flLatencyOut %f\nflLatencyIn %f\nflLatencyBoth %f\n-\nflLatencyOutAvg %f\nflLatencyInAvg %f\nflLatencyBothAvg %f", flLatencyOut, flLatencyIn, flLatencyBoth, flLatencyOutAvg, flLatencyInAvg, flLatencyBothAvg);
 	 		
 			// Compensate the latency
-			vDeltaOrigin[0] *= -(flLatencyBothAvg);
-			vDeltaOrigin[1] *= -(flLatencyBothAvg);
-		//	vDeltaOrigin[2] *= -(flLatencyBothAvg);
-	 
+			vDeltaOrigin[0] *= -((100 - flLatencyBoth) * (flLatencyBoth * 2));
+			vDeltaOrigin[1] *= -((100 - flLatencyBoth) * (flLatencyBoth * 2));
+			vDeltaOrigin[2] *= -((100 - flLatencyBoth) * (flLatencyBoth * 2));
+	 		
 			// Apply the prediction
 			AddVectors(vOrigin, vDeltaOrigin, vOrigin);
 			
@@ -488,10 +498,14 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				buttons |= IN_ATTACK;
 			}
 			
-			angles = flAimDir;
-			TeleportEntity(client, NULL_VECTOR, flAimDir, NULL_VECTOR);
+			if(bReady)
+			{
+				angles = flAimDir;
+				TeleportEntity(client, NULL_VECTOR, flAimDir, NULL_VECTOR);
+			}
 			
 			bChanged = true;
+			bReady = true;	//We need 1 frame of time to apply prediction, otherwise we will miss if we 1 tap
 		}
 	}
 	
@@ -538,18 +552,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				bool bShoot = false;
 				int iHitGroup = TR_GetHitGroup(hTrace);
 				
-				if(g_iTriggerPos[client] == TRIGGER_ALL)
-				{
-					if(g_bZoomedOnly[client] && TF2_IsPlayerInCondition(client, TFCond_Zoomed))
-					{
-						bShoot = true;
-					}
-					else if(!g_bZoomedOnly[client])
-					{
-						bShoot = true;
-					}
-				}
-				else if(g_iTriggerPos[client] == TRIGGER_HEAD && iHitGroup == 1)
+				if(g_iTriggerPos[client] == TRIGGER_HEAD && iHitGroup == 1)
 				{
 					if(g_bZoomedOnly[client] && TF2_IsPlayerInCondition(client, TFCond_Zoomed))
 					{
@@ -562,16 +565,13 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				}
 				else if(g_iTriggerPos[client] == TRIGGER_TORSO)
 				{
-					if(iHitGroup == 0 || iHitGroup == 2 || iHitGroup == 3 || iHitGroup == 4 || iHitGroup == 5 || iHitGroup == 6 || iHitGroup == 7)
+					if(g_bZoomedOnly[client] && TF2_IsPlayerInCondition(client, TFCond_Zoomed))
 					{
-						if(g_bZoomedOnly[client] && TF2_IsPlayerInCondition(client, TFCond_Zoomed))
-						{
-							bShoot = true;
-						}
-						else if(!g_bZoomedOnly[client])
-						{
-							bShoot = true;
-						}
+						bShoot = true;
+					}
+					else if(!g_bZoomedOnly[client])
+					{
+						bShoot = true;
 					}
 				}
 				

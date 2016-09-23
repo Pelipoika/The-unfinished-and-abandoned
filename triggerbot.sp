@@ -295,6 +295,8 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				else
 					utils_EntityGetBonePosition(i, utils_EntityLookupBone(i, "bip_pelvis"), vOrigin, vNothing);
 				
+				vOrigin[2] += 2.0;
+				
 				TR_TraceRayFilter(flPos, vOrigin, MASK_SHOT, RayType_EndPoint, AimTargetFilter, client);
 				if(TR_DidHit())
 				{
@@ -358,20 +360,20 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			vOldOrigin = vOrigin;
 	 
 			// Get the latency
-			float flLatencyOut  = GetClientLatency(client, NetFlow_Outgoing);
+	/*		float flLatencyOut  = GetClientLatency(client, NetFlow_Outgoing);
 	 		float flLatencyIn   = GetClientLatency(client, NetFlow_Incoming);
 	 		float flLatencyBoth = GetClientLatency(client, NetFlow_Both);
 	 		
 	 		float flLatencyOutAvg  = GetClientAvgLatency(client, NetFlow_Outgoing);
-	 		float flLatencyInAvg   = GetClientAvgLatency(client, NetFlow_Incoming);
+	 		float flLatencyInAvg   = GetClientAvgLatency(client, NetFlow_Incoming);*/
 	 		float flLatencyBothAvg = GetClientAvgLatency(client, NetFlow_Both);
 	 		
-	 		PrintCenterText(client, "flLatencyOut %f\nflLatencyIn %f\nflLatencyBoth %f\n-\nflLatencyOutAvg %f\nflLatencyInAvg %f\nflLatencyBothAvg %f", flLatencyOut, flLatencyIn, flLatencyBoth, flLatencyOutAvg, flLatencyInAvg, flLatencyBothAvg);
+	 	//	PrintCenterText(client, "flLatencyOut %f\nflLatencyIn %f\nflLatencyBoth %f\n-\nflLatencyOutAvg %f\nflLatencyInAvg %f\nflLatencyBothAvg %f", flLatencyOut, flLatencyIn, flLatencyBoth, flLatencyOutAvg, flLatencyInAvg, flLatencyBothAvg);
 	 		
 			// Compensate the latency
-			vDeltaOrigin[0] *= -((100 - flLatencyBoth) * (flLatencyBoth * 2));
-			vDeltaOrigin[1] *= -((100 - flLatencyBoth) * (flLatencyBoth * 2));
-			vDeltaOrigin[2] *= -((100 - flLatencyBoth) * (flLatencyBoth * 2));
+			vDeltaOrigin[0] *= -((100 - flLatencyBothAvg) * (flLatencyBothAvg * 2));
+			vDeltaOrigin[1] *= -((100 - flLatencyBothAvg) * (flLatencyBothAvg * 2));
+			vDeltaOrigin[2] *= -((100 - flLatencyBothAvg) * (flLatencyBothAvg * 2));
 	 		
 			// Apply the prediction
 			AddVectors(vOrigin, vDeltaOrigin, vOrigin);
@@ -602,20 +604,25 @@ stock int FindTargetInViewCone(int iViewer, float iOffz = 0.0)
 	{
 		if(i != iViewer && IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) != GetClientTeam(iViewer) && TF2_IsKillable(i))
 		{
-			float flTPos[3];
-			GetClientAbsOrigin(i, flTPos);
+			float vOrigin[3];
+			GetClientAbsOrigin(i, vOrigin);
 			
-			float flMaxs[3];
-			GetEntPropVector(i, Prop_Send, "m_vecMaxs", flMaxs);
-			flTPos[2] += flMaxs[2] / 2;
+			float vNothing[3];
 			
-			TR_TraceRayFilter(flPos, flTPos, MASK_SHOT, RayType_EndPoint, AimTargetFilter, iViewer);
+			if(g_iTriggerPos[iViewer] == TRIGGER_HEAD)
+				utils_EntityGetBonePosition(i, utils_EntityLookupBone(i, "bip_head"), vOrigin, vNothing);
+			else
+				utils_EntityGetBonePosition(i, utils_EntityLookupBone(i, "bip_pelvis"), vOrigin, vNothing);
+			
+			vOrigin[2] += 2.0;
+			
+			TR_TraceRayFilter(flPos, vOrigin, MASK_SHOT, RayType_EndPoint, AimTargetFilter, iViewer);
 			if(TR_DidHit())
 			{
 				int entity = TR_GetEntityIndex();
 				if(entity == i)
 				{
-					float flDistance = GetVectorDistance(flPos, flTPos);
+					float flDistance = GetVectorDistance(flPos, vOrigin);
 			
 					if(flDistance < flBestDistance)
 					{
@@ -632,7 +639,25 @@ stock int FindTargetInViewCone(int iViewer, float iOffz = 0.0)
 
 public bool AimTargetFilter(int entity, int contentsMask, any iExclude)
 {
-    return !(entity == iExclude);
+	//Return true to not hit and false to hit.
+	
+	char class[64];
+	GetEntityClassname(entity, class, 64);
+//	PrintToServer("%i %s exclude %i", entity, class, iExclude);
+	
+	if(StrEqual(class, "player"))
+	{
+		if(GetClientTeam(entity) == GetClientTeam(iExclude))
+		{
+			return false;
+		}
+	}
+	else if(StrEqual(class, "func_respawnroomvisualizer"))
+	{
+		return false;
+	}
+	
+	return !(entity == iExclude);
 }
 
 stock void ClampAngle(float flAngles[3])

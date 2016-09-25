@@ -3,12 +3,14 @@
 #include <tf2_stocks>
 #include <tf2attributes>
 #include <utilsext>
+#include <dhooks>
 
 #pragma newdecls required;
 
 #define DEG2RAD(%1) ((%1) * FLOAT_PI / 180.0)
 
 Handle g_hHudInfo;
+Handle g_hHudShotCounter;
 
 bool g_bZoomedOnly[MAXPLAYERS+1];
 bool g_bIgnoreDeadRinger[MAXPLAYERS+1];
@@ -24,11 +26,18 @@ bool g_bNoSpread[MAXPLAYERS+1];
 bool g_bAimbot[MAXPLAYERS+1];
 bool g_bAutoShoot[MAXPLAYERS + 1];
 bool g_bSilentAim[MAXPLAYERS + 1];
+bool g_bShotCounter[MAXPLAYERS + 1];
+
+Handle g_hPrimaryAttack;
+
+bool g_bShot[MAXPLAYERS + 1];
+int g_iShots[MAXPLAYERS + 1];
+int g_iShotsHit[MAXPLAYERS + 1];
 
 //Add Sniper Rifle: Wait for charge
 //Auto Airblast
 //Auto sticky det
-//*(NetVar( int*, pBaseWeapon, m_iWeaponState )) = AC_STATE_IDLE;  
+//(NetVar( int*, pBaseWeapon, m_iWeaponState )) = AC_STATE_IDLE;  
 
 public Plugin myinfo = 
 {
@@ -43,7 +52,18 @@ public void OnPluginStart()
 {
 	RegAdminCmd("sm_hacks", Command_Trigger, ADMFLAG_BAN);
 	
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		if(IsClientInGame(i))
+		{
+			OnClientPutInServer(i);
+		}
+	}
+	
 	g_hHudInfo = CreateHudSynchronizer();
+	g_hHudShotCounter = CreateHudSynchronizer();
+	
+	g_hPrimaryAttack = DHookCreate(436, HookType_Entity, ReturnType_Void, ThisPointer_CBaseEntity, CTFWeaponBase_PrimaryAttack);
 }
 
 public void OnClientPutInServer(int client)
@@ -62,6 +82,13 @@ public void OnClientPutInServer(int client)
 	g_bAimbot[client] = false;
 	g_bAutoShoot[client] = false;
 	g_bSilentAim[client] = false;
+	g_bShotCounter[client] = false;
+	
+	g_bShot[client] = false;
+	g_iShots[client] = 0;
+	g_iShotsHit[client] = 0;
+	
+	SDKHook(client, SDKHook_TraceAttackPost, TraceAttack);
 }
 
 public Action Command_Trigger(int client, int args)
@@ -108,7 +135,7 @@ stock void DisplayAimbotMenuAtItem(int client, int page = 0)
 		menu.AddItem("3", "Silent Aim: On");
 	else
 		menu.AddItem("3", "Silent Aim: Off");
-		
+	
 	menu.ExitButton = true;
 	menu.ExitBackButton = true;
 	menu.DisplayAt(client, page, MENU_TIME_FOREVER);
@@ -123,11 +150,16 @@ stock void DisplayMiscMenuAtItem(int client, int page = 0)
 		menu.AddItem("0", "No Slowdown: On");
 	else
 		menu.AddItem("0", "No Slowdown: Off");
-		
+	
 	if(g_bAllCrits[client])
 		menu.AddItem("1", "Critical Hits: On");
 	else
 		menu.AddItem("1", "Critical Hits: Off");
+	
+	if(g_bShotCounter[client])
+		menu.AddItem("2", "Shot Counter: On");
+	else
+		menu.AddItem("2", "Shot Counter: Off");
 	
 	menu.ExitButton = true;
 	menu.ExitBackButton = true;
@@ -182,6 +214,22 @@ public int MenuMiscHandler(Menu menu, MenuAction action, int param1, int param2)
 		{		
 			case 0: g_bNoSlowDown[param1] = !g_bNoSlowDown[param1];
 			case 1: g_bAllCrits[param1] = !g_bAllCrits[param1];
+			case 2: 
+			{
+				int wep = GetPlayerWeaponSlot(param1, TFWeaponSlot_Primary);
+				if(IsValidEntity(wep))
+					DHookEntity(g_hPrimaryAttack, false, wep);
+				
+				wep = GetPlayerWeaponSlot(param1, TFWeaponSlot_Secondary);
+				if(IsValidEntity(wep))
+					DHookEntity(g_hPrimaryAttack, false, wep);
+			
+				g_bShot[param1] = false;
+				g_iShots[param1] = 0;
+				g_iShotsHit[param1] = 0;
+				
+				g_bShotCounter[param1] = !g_bShotCounter[param1];
+			}
 		}
 		
 		DisplayMiscMenuAtItem(param1, GetMenuSelectionPosition());
@@ -212,11 +260,67 @@ public int MenuLegitnessHandler(Menu menu, MenuAction action, int param1, int pa
 	}
 }
 
+public Action TF2_CalcIsAttackCritical(int client, int weapon, char[] weaponname, bool &result)
+{
+	if(g_bAllCrits[client])
+	{
+		result = true;
+		
+		return Plugin_Changed;
+	}
+	
+	return Plugin_Continue;
+}
+
+public MRESReturn CTFWeaponBase_PrimaryAttack(int pThis, Handle hReturn, Handle hParams)
+{
+	int iWeapon = pThis;
+	int iShooter = GetEntPropEnt(iWeapon, Prop_Data, "m_hOwnerEntity");
+	
+//	PrintToChatAll("%N is firing their weapon %i", iShooter, iWeapon);
+	
+	g_bShot[iShooter] = true;
+	g_iShots[iShooter]++;
+	
+	RequestFrame(DidHit, GetClientUserId(iShooter));
+	
+	return MRES_Ignored;
+}
+
+public void TraceAttack(int victim, int attacker, int inflictor, float damage, int damagetype, int ammotype, int hitbox, int hitgroup)
+{
+	RequestFrame(TraceAttackDelay, GetClientUserId(attacker));
+}
+
+public void TraceAttackDelay(int userid)
+{
+	int client = GetClientOfUserId(userid);
+	if(client > 0)
+	{
+		if(g_bShot[client])
+		{
+			g_bShot[client] = false;
+		}
+	}
+}
+
+public void DidHit(int userid)
+{
+	int client = GetClientOfUserId(userid);
+	if(client > 0)
+	{
+		if(!g_bShot[client])
+			g_iShotsHit[client]++;
+			
+	//	PrintToChatAll("%N DidHit? %s", client, !g_bShot[client] ? "Yes" : "No");
+	}
+}
+
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
 /*	if(IsFakeClient(client))
 	{
-	//	vel[0] = 500.0;
+		vel[0] = 500.0;
 		
 		if(GetRandomFloat(1.0, 0.0) > 0.005)
 		{
@@ -224,10 +328,21 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		}
 	}*/
 
-	if(IsFakeClient(client) || !IsPlayerAlive(client))
+	if(IsFakeClient(client) || !IsPlayerAlive(client)) 
 		return Plugin_Continue;	
-		
+	
 	bool bChanged = false;
+	
+	if(g_bShotCounter[client])
+	{
+		SetHudTextParams(-1.0, 0.75, 0.1, 255, 0, 255, 0, 0, 0.0, 0.0, 0.0);
+		
+		int iShots = g_iShots[client];
+		int iHits = g_iShotsHit[client];
+		float flHitPerc = (float(iHits) / float(iShots)) * 100;
+		
+		ShowSyncHudText(client, g_hHudShotCounter, "Shots hit %i/%i [%.0f%%]", iHits, iShots, flHitPerc);
+	}
 	
 	if(g_bAimbot[client])
 	{
@@ -393,17 +508,6 @@ stock bool IsBoneVisible(int looker, int target, int bone)
 	}
 	
 	return false;
-}
-
-public Action TF2_CalcIsAttackCritical(int client, int weapon, char[] weaponname, bool &result)
-{
-	if(client > 0 && client <= MaxClients && IsClientInGame(client) && g_bAllCrits[client])
-	{
-		result = true;
-		return Plugin_Changed;
-	}
-	
-	return Plugin_Continue;
 }
 
 public void TF2_OnConditionAdded(int client, TFCond condition)

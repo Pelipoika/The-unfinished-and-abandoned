@@ -1,7 +1,5 @@
 #include <sdktools>
 #include <sdkhooks>
-#include <tf2>
-#include <tf2_stocks>
 
 #pragma newdecls required
 
@@ -72,19 +70,15 @@ public Action OnPlayerThink(int client)
 	int iGlow = EntRefToEntIndex(g_iPlayerGlowEntity[client]);
 	if(iGlow != INVALID_ENT_REFERENCE)
 	{
-		char strGlowColor[18];
-		
 		float flRate = g_hRainbowCycleRate.FloatValue;
 		
-		int red = RoundToNearest(Cosine((GetGameTime() * flRate) + client + 0) * 127.5 + 127.5);
-		int grn = RoundToNearest(Cosine((GetGameTime() * flRate) + client + 2) * 127.5 + 127.5);
-		int blu = RoundToNearest(Cosine((GetGameTime() * flRate) + client + 4) * 127.5 + 127.5);
+		int color[4];
+		color[0] = RoundToNearest(Cosine((GetGameTime() * flRate) + client + 0) * 127.5 + 127.5);
+		color[1] = RoundToNearest(Cosine((GetGameTime() * flRate) + client + 2) * 127.5 + 127.5);
+		color[2] = RoundToNearest(Cosine((GetGameTime() * flRate) + client + 4) * 127.5 + 127.5);
+		color[3] = 255;
 		
-		Format(strGlowColor, sizeof(strGlowColor), "%i %i %i %i", red, grn, blu, 255);
-		
-	//	PrintCenterText(client, "%s", strGlowColor);
-		
-		SetVariantString(strGlowColor);
+		SetVariantColor(color);
 		AcceptEntityInput(iGlow, "SetGlowColor");
 	}
 }

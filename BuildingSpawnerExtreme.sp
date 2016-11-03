@@ -17,7 +17,7 @@ public Plugin myinfo =
 	name = "[TF2] BuildingSpawnerExtreme",
 	author = "Pelipoika",
 	description = "Now just stop trying to mess with my contraptions!",
-	version = "2.2.0",
+	version = "3.0",
 	url = "http://www.sourcemod.net/"
 };
 

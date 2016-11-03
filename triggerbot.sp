@@ -12,21 +12,22 @@
 Handle g_hHudInfo;
 Handle g_hHudShotCounter;
 
-bool g_bZoomedOnly[MAXPLAYERS+1];
-bool g_bIgnoreDeadRinger[MAXPLAYERS+1];
-bool g_bIgnoreCloaked[MAXPLAYERS+1];
-bool g_bIgnoreDisguised[MAXPLAYERS+1];
-bool g_bAutoBackstab[MAXPLAYERS+1];
-bool g_bWaitForCharge[MAXPLAYERS+1];
-bool g_bNoSlowDown[MAXPLAYERS+1];
-bool g_bAllCrits[MAXPLAYERS+1];
-bool g_bAutoStrafe[MAXPLAYERS+1];
-bool g_bBhop[MAXPLAYERS+1];
-bool g_bNoSpread[MAXPLAYERS+1];
-bool g_bAimbot[MAXPLAYERS+1];
+bool g_bZoomedOnly[MAXPLAYERS + 1];
+bool g_bIgnoreDeadRinger[MAXPLAYERS + 1];
+bool g_bIgnoreCloaked[MAXPLAYERS + 1];
+bool g_bIgnoreDisguised[MAXPLAYERS + 1];
+bool g_bAutoBackstab[MAXPLAYERS + 1];
+bool g_bWaitForCharge[MAXPLAYERS + 1];
+bool g_bNoSlowDown[MAXPLAYERS + 1];
+bool g_bAllCrits[MAXPLAYERS + 1];
+bool g_bAutoStrafe[MAXPLAYERS + 1];
+bool g_bBhop[MAXPLAYERS + 1];
+bool g_bNoSpread[MAXPLAYERS + 1];
+bool g_bAimbot[MAXPLAYERS + 1];
 bool g_bAutoShoot[MAXPLAYERS + 1];
 bool g_bSilentAim[MAXPLAYERS + 1];
 bool g_bShotCounter[MAXPLAYERS + 1];
+bool g_bWallhack[MAXPLAYERS + 1];
 
 Handle g_hPrimaryAttack;
 
@@ -66,6 +67,21 @@ public void OnPluginStart()
 	g_hPrimaryAttack = DHookCreate(436, HookType_Entity, ReturnType_Void, ThisPointer_CBaseEntity, CTFWeaponBase_PrimaryAttack);
 }
 
+public void OnPluginEnd()
+{
+	int index = -1;
+	while ((index = FindEntityByClassname(index, "tf_glow")) != -1)
+	{
+		char strName[64];
+		GetEntPropString(index, Prop_Data, "m_iName", strName, sizeof(strName));
+		if(StrEqual(strName, "ESPGlow"))
+		{
+			AcceptEntityInput(index, "ClearParent");
+			AcceptEntityInput(index, "Kill");
+		}
+	}
+}
+
 public void OnClientPutInServer(int client)
 {
 	g_bZoomedOnly[client] = false;
@@ -83,12 +99,28 @@ public void OnClientPutInServer(int client)
 	g_bAutoShoot[client] = false;
 	g_bSilentAim[client] = false;
 	g_bShotCounter[client] = false;
+	g_bWallhack[client] = false;
 	
 	g_bShot[client] = false;
 	g_iShots[client] = 0;
 	g_iShotsHit[client] = 0;
 	
+	TF2_CreateGlow(client);
+	
 	SDKHook(client, SDKHook_TraceAttackPost, TraceAttack);
+}
+
+public void OnClientDisconnect(int client)
+{
+	int index = -1;
+	while ((index = FindEntityByClassname(index, "tf_glow")) != -1)
+	{
+		if (GetEntPropEnt(index, Prop_Send, "m_hTarget") == client)
+		{
+			AcceptEntityInput(index, "ClearParent");
+			AcceptEntityInput(index, "Kill");
+		}
+	}
 }
 
 public Action Command_Trigger(int client, int args)
@@ -161,6 +193,11 @@ stock void DisplayMiscMenuAtItem(int client, int page = 0)
 	else
 		menu.AddItem("2", "Shot Counter: Off");
 	
+	if(g_bWallhack[client])
+		menu.AddItem("3", "Wallhack: On");
+	else
+		menu.AddItem("3", "Wallhack: Off");
+	
 	menu.ExitButton = true;
 	menu.ExitBackButton = true;
 	menu.DisplayAt(client, page, MENU_TIME_FOREVER);
@@ -230,6 +267,7 @@ public int MenuMiscHandler(Menu menu, MenuAction action, int param1, int param2)
 				
 				g_bShotCounter[param1] = !g_bShotCounter[param1];
 			}
+			case 3: g_bWallhack[param1] = !g_bWallhack[param1];
 		}
 		
 		DisplayMiscMenuAtItem(param1, GetMenuSelectionPosition());
@@ -289,7 +327,10 @@ public MRESReturn CTFWeaponBase_PrimaryAttack(int pThis, Handle hReturn, Handle 
 
 public void TraceAttack(int victim, int attacker, int inflictor, float damage, int damagetype, int ammotype, int hitbox, int hitgroup)
 {
-	RequestFrame(TraceAttackDelay, GetClientUserId(attacker));
+	if(attacker > 0 && attacker <= MaxClients && IsClientInGame(attacker))
+	{
+		RequestFrame(TraceAttackDelay, GetClientUserId(attacker));
+	}
 }
 
 public void TraceAttackDelay(int userid)
@@ -363,7 +404,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			
 			float vOrigin[3], vNothing[3];
 			int iBone = FindBestHitbox(client, iTarget);
-			if(iBone < 0)
+			if(iBone == -1)
 				return Plugin_Continue;
 			
 			utils_EntityGetBonePosition(iTarget, iBone, vOrigin, vNothing);
@@ -444,6 +485,28 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	return Plugin_Continue;
 }
 
+public Action OnGlowTransmit(int entity, int other)
+{
+	SetEdictFlags(entity, FL_EDICT_FULLCHECK|FL_EDICT_CHANGED);
+	
+	int GlowOwner = GetEntPropEnt(entity, Prop_Send, "m_hTarget");
+	
+	if(GlowOwner == other)
+		return Plugin_Handled;
+
+	if(!g_bWallhack[other])
+		return Plugin_Handled;
+	
+	if(GetClientTeam(GlowOwner) == 3)
+		SetVariantColor({91, 122, 140, 255});
+	else
+		SetVariantColor({189, 59, 140, 255});
+	
+	AcceptEntityInput(entity, "SetGlowColor");
+	
+	return Plugin_Continue;
+}
+
 stock void FixSilentAimMovement(int client, float vel[3], float angles[3], float aimbotAngles[3])
 {
 	float vecSilent[3];
@@ -460,6 +523,10 @@ stock void FixSilentAimMovement(int client, float vel[3], float angles[3], float
 
 stock int FindBestHitbox(int client, int target)
 {
+	int iNumBones = utils_EntityGetNumBones(target);
+	if(iNumBones < 17)
+		return -1;
+
 	int iBestHitBox = utils_EntityLookupBone(target, "bip_spine_2");
 	int iActiveWeapon = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
 	
@@ -472,7 +539,7 @@ stock int FindBestHitbox(int client, int target)
 		}
 	}
 	
-	if(IsBoneVisible(client, target, iBestHitBox))
+	if(iBestHitBox != -1 && IsBoneVisible(client, target, iBestHitBox))
 	{
 		return iBestHitBox;
 	}
@@ -480,14 +547,14 @@ stock int FindBestHitbox(int client, int target)
 	{
 		iBestHitBox = -1;
 		
-		for (int i = 0; i < 17; i++)
+	/*	for (int i = 0; i < 17; i++)
 		{
 			if(IsBoneVisible(client, target, i))
 			{
 				iBestHitBox = i;
 				break;
 			}
-		}
+		}*/
 	}
 	
 	return iBestHitBox;
@@ -546,7 +613,7 @@ stock int FindClosestTarget(int iViewer)
 		if(i != iViewer && IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) != GetClientTeam(iViewer) && TF2_IsKillable(i))
 		{
 			int iBone = FindBestHitbox(iViewer, i);
-			if(iBone > -1)
+			if(iBone != -1)
 			{
 				float vOrigin[3], vNothing[3];
 				utils_EntityGetBonePosition(i, iBone, vOrigin, vNothing);
@@ -619,4 +686,31 @@ stock void TE_FireBullets(float vecOrigin[3], float vecAngles0, float vecAngles1
 	TE_WriteFloat("m_flSpread", flSpread);
 	TE_WriteNum("m_bCritical", bCritical);
 	TE_SendToAll();
+}
+
+stock int TF2_CreateGlow(int iEnt)
+{
+	char oldEntName[64];
+	GetEntPropString(iEnt, Prop_Data, "m_iName", oldEntName, sizeof(oldEntName));
+
+	char strName[126], strClass[64];
+	GetEntityClassname(iEnt, strClass, sizeof(strClass));
+	Format(strName, sizeof(strName), "%s%i", strClass, iEnt);
+	DispatchKeyValue(iEnt, "targetname", strName);
+	
+	int ent = CreateEntityByName("tf_glow");
+	DispatchKeyValue(ent, "targetname", "ESPGlow");
+	DispatchKeyValue(ent, "target", strName);
+	DispatchKeyValue(ent, "Mode", "0");
+	DispatchSpawn(ent);
+	
+	AcceptEntityInput(ent, "Enable");
+	
+	//Change name back to old name because we don't need it anymore.
+	SetEntPropString(iEnt, Prop_Data, "m_iName", oldEntName);
+	
+	SetEdictFlags(ent, FL_EDICT_FULLCHECK|FL_EDICT_CHANGED);
+	SDKHook(ent, SDKHook_SetTransmit, OnGlowTransmit);
+	
+	return ent;
 }

@@ -214,7 +214,7 @@ public int MenuAimbotHandler(Menu menu, MenuAction action, int param1, int param
 			case 2:
 			{
 				g_bNoSpread[param1] = !g_bNoSpread[param1];
-				
+			
 				for (int w = 0; w <= view_as<int>(TFWeaponSlot_Secondary); w++)
 				{
 					int iEntity = GetPlayerWeaponSlot(param1, w);
@@ -253,19 +253,34 @@ public int MenuMiscHandler(Menu menu, MenuAction action, int param1, int param2)
 			case 1: g_bAllCrits[param1] = !g_bAllCrits[param1];
 			case 2: 
 			{
-				int wep = GetPlayerWeaponSlot(param1, TFWeaponSlot_Primary);
-				if(IsValidEntity(wep))
-					DHookEntity(g_hPrimaryAttack, false, wep);
+				if(!g_bShotCounter[param1])
+				{			
+					int wep = GetPlayerWeaponSlot(param1, TFWeaponSlot_Primary);
+					if(IsValidEntity(wep))
+						DHookEntity(g_hPrimaryAttack, false, wep);
+					
+					wep = GetPlayerWeaponSlot(param1, TFWeaponSlot_Secondary);
+					if(IsValidEntity(wep))
+						DHookEntity(g_hPrimaryAttack, false, wep);
+						
+					g_bShotCounter[param1] = true;
+				}
+				else
+				{
+					int wep = GetPlayerWeaponSlot(param1, TFWeaponSlot_Primary);
+					if(IsValidEntity(wep))
+						DHookRemoveHookID(DHookEntity(g_hPrimaryAttack, false, wep));
+					
+					wep = GetPlayerWeaponSlot(param1, TFWeaponSlot_Secondary);
+					if(IsValidEntity(wep))
+						DHookRemoveHookID(DHookEntity(g_hPrimaryAttack, false, wep));
+					
+					g_bShotCounter[param1] = false;
+				}
 				
-				wep = GetPlayerWeaponSlot(param1, TFWeaponSlot_Secondary);
-				if(IsValidEntity(wep))
-					DHookEntity(g_hPrimaryAttack, false, wep);
-			
 				g_bShot[param1] = false;
 				g_iShots[param1] = 0;
-				g_iShotsHit[param1] = 0;
-				
-				g_bShotCounter[param1] = !g_bShotCounter[param1];
+				g_iShotsHit[param1] = 0;				
 			}
 			case 3: g_bWallhack[param1] = !g_bWallhack[param1];
 		}
@@ -315,7 +330,7 @@ public MRESReturn CTFWeaponBase_PrimaryAttack(int pThis, Handle hReturn, Handle 
 	int iWeapon = pThis;
 	int iShooter = GetEntPropEnt(iWeapon, Prop_Data, "m_hOwnerEntity");
 	
-//	PrintToChatAll("%N is firing their weapon %i", iShooter, iWeapon);
+//	PrintToChatAll("CTFWeaponBase_PrimaryAttack %N is firing their weapon %i", iShooter, iWeapon);
 	
 	g_bShot[iShooter] = true;
 	g_iShots[iShooter]++;

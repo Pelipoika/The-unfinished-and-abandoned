@@ -64,7 +64,7 @@ public void OnPluginStart()
 	g_hHudInfo = CreateHudSynchronizer();
 	g_hHudShotCounter = CreateHudSynchronizer();
 	
-	g_hPrimaryAttack = DHookCreate(436, HookType_Entity, ReturnType_Void, ThisPointer_CBaseEntity, CTFWeaponBase_PrimaryAttack);
+	g_hPrimaryAttack = DHookCreate(437, HookType_Entity, ReturnType_Void, ThisPointer_CBaseEntity, CTFWeaponBase_PrimaryAttack);
 }
 
 public void OnPluginEnd()
@@ -374,7 +374,7 @@ public void DidHit(int userid)
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
-/*	if(IsFakeClient(client))
+	if(IsFakeClient(client))
 	{
 		vel[0] = 500.0;
 		
@@ -382,7 +382,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		{
 			buttons |= IN_JUMP
 		}
-	}*/
+	}
 
 	if(IsFakeClient(client) || !IsPlayerAlive(client)) 
 		return Plugin_Continue;	
@@ -402,6 +402,10 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	
 	if(g_bAimbot[client])
 	{
+		float frametime = GetTickInterval();
+		if(frametime < (1.0 * 10.0 ^ -5.0))
+			return Plugin_Continue;
+	
 		SetEntPropVector(client, Prop_Send, "m_vecPunchAngle", NULL_VECTOR);
 		SetEntPropVector(client, Prop_Send, "m_vecPunchAngleVel", NULL_VECTOR);
 		
@@ -410,46 +414,50 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		
 		int iTarget = FindClosestTarget(client);
 		if(iTarget != -1)
-		{
+		{		
 			SetHudTextParams(0.55, 0.55, 0.1, 0, 255, 0, 0, 0, 0.0, 0.0, 0.0);
 			ShowSyncHudText(client, g_hHudInfo, "[AIMING AT: %N [%i HP]", iTarget, GetEntProp(iTarget, Prop_Send, "m_iHealth"));
 		
-			float flPPos[3];
-			GetClientEyePosition(client, flPPos);
+			float myEyePosition[3];
+			GetClientEyePosition(client, myEyePosition);
 			
-			float vOrigin[3], vNothing[3];
+			float target_point[3], vNothing[3];
 			int iBone = FindBestHitbox(client, iTarget);
 			if(iBone == -1)
 				return Plugin_Continue;
 			
-			utils_EntityGetBonePosition(iTarget, iBone, vOrigin, vNothing);
+			utils_EntityGetBonePosition(iTarget, iBone, target_point, vNothing);
 			
-			vOrigin[2] += 2.0;
+			target_point[2] += 2.0;
 			
-			static float vOldOrigin[3];
-			static float vOldestOrigin[3];
-			float vDeltaOrigin[3];
+			float target_velocity[3];
+			GetEntPropVector(iTarget, Prop_Data, "m_vecAbsVelocity", target_velocity);
 			
-			// Calculate the delta (the change in two vector) origin
-			SubtractVectors(vOrigin, vOldestOrigin, vDeltaOrigin);
-			vOldestOrigin = vOldOrigin;
-			vOldOrigin = vOrigin;
-	 
-			// Get the latency
-	 		float flLatencyBothAvg = GetClientAvgLatency(client, NetFlow_Both);
+			float delta[3];
+			float flLeadTime = GetClientAvgLatency(client, NetFlow_Both) * 100;
+			delta[0] += (-flLeadTime * target_velocity[0]);
+			delta[1] += (-flLeadTime * target_velocity[1]);
+			delta[2] += (-flLeadTime * target_velocity[2]);
 			
-			// Compensate the latency
-			vDeltaOrigin[0] *= -((100 - flLatencyBothAvg) * (flLatencyBothAvg * 2));
-			vDeltaOrigin[1] *= -((100 - flLatencyBothAvg) * (flLatencyBothAvg * 2));
-			vDeltaOrigin[2] *= -((100 - flLatencyBothAvg) * (flLatencyBothAvg * 2));
-	 		
-			// Apply the prediction
-			AddVectors(vOrigin, vDeltaOrigin, vOrigin);
+			float scale = GetVectorLength(delta);
+			NormalizeVector(delta, delta);
 			
-			float flAimDir[3];
-			MakeVectorFromPoints(flPPos, vOrigin, flAimDir);
-			GetVectorAngles(flAimDir, flAimDir);
-			ClampAngle(flAimDir);
+			float m_vecTargetVelocity[3];
+			m_vecTargetVelocity[0] = (scale * delta[0]) + target_velocity[0];
+			m_vecTargetVelocity[1] = (scale * delta[1]) + target_velocity[1];
+			m_vecTargetVelocity[2] = (scale * delta[2]) + target_velocity[2];
+			
+			target_point[0] += frametime * m_vecTargetVelocity[0];
+			target_point[1] += frametime * m_vecTargetVelocity[1];
+			target_point[2] += frametime * m_vecTargetVelocity[2];
+			
+			float eye_to_target[3];
+			SubtractVectors(target_point, myEyePosition, eye_to_target);
+			GetVectorAngles(eye_to_target, eye_to_target);
+			
+			eye_to_target[0] = AngleNormalize(eye_to_target[0]);
+			eye_to_target[1] = AngleNormalize(eye_to_target[1]);
+			eye_to_target[2] = 0.0;
 			
 			if(g_bAutoShoot[client])
 			{
@@ -481,14 +489,14 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			
 			if(!g_bSilentAim[client])
 			{
-				TeleportEntity(client, NULL_VECTOR, flAimDir, NULL_VECTOR);
+				TeleportEntity(client, NULL_VECTOR, eye_to_target, NULL_VECTOR);
 			}
 			else
 			{
-				FixSilentAimMovement(client, vel, angles, flAimDir);
+				FixSilentAimMovement(client, vel, angles, eye_to_target);
 			}
 			
-			angles = flAimDir;
+			angles = eye_to_target;
 			
 			bChanged = true;
 		}
@@ -498,6 +506,16 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		return Plugin_Changed;
 	
 	return Plugin_Continue;
+}
+
+stock float Max(float one, float two)
+{
+	if(one > two)
+		return one;
+	else if(two > one)
+		return two;
+		
+	return two;
 }
 
 public Action OnGlowTransmit(int entity, int other)
@@ -675,12 +693,12 @@ public bool AimTargetFilter(int entity, int contentsMask, any iExclude)
 	return !(entity == iExclude);
 }
 
-stock void ClampAngle(float flAngles[3])
+stock float AngleNormalize( float angle )
 {
-	while(flAngles[0] > 89.0)  flAngles[0] -= 360.0;
-	while(flAngles[0] < -89.0) flAngles[0] += 360.0;
-	while(flAngles[1] > 180.0) flAngles[1] -= 360.0;
-	while(flAngles[1] <-180.0) flAngles[1] += 360.0;
+	angle = angle - 360.0 * RoundToFloor(angle / 360.0);
+	while (angle > 180.0) angle -= 360.0;
+	while (angle < -180.0) angle += 360.0;
+	return angle;
 }
 
 stock bool IsValidClient(int client)

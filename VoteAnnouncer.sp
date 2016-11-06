@@ -40,7 +40,7 @@ public Action VoteStart(UserMsg msg_id, BfRead msg, const int[] players, int pla
 	pack.WriteString(DetailsString);
 	pack.WriteCell(m_iEntityVotedAgainst);
 	
-	RequestFrame(FrameVotePass, pack);
+	RequestFrame(FrameVoteStart, pack);
 	
 /*	VoteStart
 	m_iOnlyTeamToVote 3
@@ -53,7 +53,7 @@ public Action VoteStart(UserMsg msg_id, BfRead msg, const int[] players, int pla
 	return Plugin_Continue;
 }
 
-public void FrameVotePass(DataPack pack)
+public void FrameVoteStart(DataPack pack)
 {
 	pack.Reset();
 	
@@ -64,15 +64,7 @@ public void FrameVotePass(DataPack pack)
 	pack.ReadString(DetailsString, sizeof(DetailsString));
 	
 	int m_iEntityVotedAgainst = pack.ReadCell();
-	
-/*	PrintToChatAll("VoteStart\nm_iOnlyTeamToVote %i\nm_iEntityHoldingVote %i\nDisplayString %s\nDetailsString %s\nIsYesNoVote %i\nm_iEntityVotedAgainst %i", 
-					m_iOnlyTeamToVote, 
-					m_iEntityHoldingVote, 
-					DisplayString, 
-					DetailsString, 
-					IsYesNoVote, 
-					m_iEntityVotedAgainst);*/
-	
+
 	char TeamColor[16];
 	switch(TF2_GetClientTeam(m_iEntityVotedAgainst))
 	{
@@ -82,7 +74,7 @@ public void FrameVotePass(DataPack pack)
 	}
 	
 	char Reason[32];
-	if(StrEqual(DisplayString, "#TF_vote_kick_player_other"))         Reason = "{gray}No reason";
+	if(StrEqual(DisplayString,      "#TF_vote_kick_player_other"))    Reason = "{gray}No reason";
 	else if(StrEqual(DisplayString, "#TF_vote_kick_player_scamming")) Reason = "{red}Scamming";	
 	else if(StrEqual(DisplayString, "#TF_vote_kick_player_idle"))     Reason = "{red}Idle";
 	else if(StrEqual(DisplayString, "#TF_vote_kick_player_cheating")) Reason = "{fullred}Cheating";
@@ -92,13 +84,39 @@ public void FrameVotePass(DataPack pack)
 
 public Action VotePass(UserMsg msg_id, BfRead msg, const int[] players, int playersNum, bool reliable, bool init)
 {
-	int m_iOnlyTeamToVote = BfReadByte(msg);
+	TFTeam m_iOnlyTeamToVote = view_as<TFTeam>(BfReadByte(msg));
 	
 	char VotePassedString[32], DetailsString[32];
 	BfReadString(msg, VotePassedString, sizeof(VotePassedString));
 	BfReadString(msg, DetailsString,    sizeof(DetailsString));
-
-	PrintToServer("VotePass\nm_iOnlyTeamToVote %i\nVotePassedString %s\nDetailsString %s", m_iOnlyTeamToVote, VotePassedString, DetailsString);
-
+	
+	DataPack pack = new DataPack();
+	pack.WriteCell(m_iOnlyTeamToVote);
+	pack.WriteString(VotePassedString);
+	pack.WriteString(DetailsString);
+	
+	RequestFrame(FrameVotePass, pack);
+	
 	return Plugin_Continue;
+}
+
+public void FrameVotePass(DataPack pack)
+{
+	pack.Reset();
+	
+	TFTeam m_iOnlyTeamToVote = pack.ReadCell();
+	
+	char VotePassedString[32], DetailsString[32];
+	pack.ReadString(VotePassedString, sizeof(VotePassedString));
+	pack.ReadString(DetailsString, sizeof(DetailsString));
+
+	char TeamColor[16];
+	switch(m_iOnlyTeamToVote)
+	{
+		case TFTeam_Blue: TeamColor = "{blue}";
+		case TFTeam_Red:  TeamColor = "{red}";
+		default:          TeamColor = "{gray}";
+	}
+	
+	CPrintToChatAll("{default}Kicking player: %s%N{default}...", TeamColor, DetailsString);
 }

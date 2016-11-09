@@ -7,11 +7,10 @@
 
 #pragma newdecls required;
 
-#define DEG2RAD(%1) ((%1) * FLOAT_PI / 180.0)
-
 Handle g_hHudInfo;
 Handle g_hHudShotCounter;
 Handle g_hHudEnemyAim;
+Handle g_hHudRadar[MAXPLAYERS + 1];
 
 bool g_bZoomedOnly[MAXPLAYERS + 1];
 bool g_bIgnoreDeadRinger[MAXPLAYERS + 1];
@@ -65,6 +64,12 @@ public void OnPluginStart()
 	g_hHudInfo = CreateHudSynchronizer();
 	g_hHudShotCounter = CreateHudSynchronizer();
 	g_hHudEnemyAim = CreateHudSynchronizer();
+	
+	//Ohno
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		g_hHudRadar[i] = CreateHudSynchronizer();
+	}
 	
 	g_hPrimaryAttack = DHookCreate(437, HookType_Entity, ReturnType_Void, ThisPointer_CBaseEntity, CTFWeaponBase_PrimaryAttack);
 }
@@ -376,7 +381,7 @@ public void DidHit(int userid)
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
-	if(IsFakeClient(client))
+/*	if(IsFakeClient(client))
 	{
 		vel[0] = 500.0;
 		
@@ -384,7 +389,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		{
 			buttons |= IN_JUMP
 		}
-	}
+	}*/
 
 	if(IsFakeClient(client) || !IsPlayerAlive(client)) 
 		return Plugin_Continue;	
@@ -409,6 +414,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			return Plugin_Continue;
 			
 		EnemyIsAimingAtYou(client);
+		Radar(client);
 		
 		SetEntPropVector(client, Prop_Send, "m_vecPunchAngle",    view_as<float>({0.0, 0.0, 0.0}));
 		SetEntPropVector(client, Prop_Send, "m_vecPunchAngleVel", view_as<float>({0.0, 0.0, 0.0}));
@@ -509,10 +515,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		}
 	}
 	
-	if(bChanged)
-		return Plugin_Changed;
-	
-	return Plugin_Continue;
+	return bChanged ? Plugin_Changed : Plugin_Continue;
 }
 
 stock void EnemyIsAimingAtYou(int client)
@@ -586,11 +589,92 @@ stock void EnemyIsAimingAtYou(int client)
 	}
 }
 
-stock float Max(float one, float two)
+stock void Radar(int client)
 {
-	if(one > two)
+	float flMyPos[3];
+	GetClientAbsOrigin(client, flMyPos);
+	
+	float screenx, screeny;
+	float vecGrenDelta[3];
+	
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		if(i == client)
+			continue;
+		
+		if(!IsClientInGame(i))
+			continue;
+		
+		if(!IsPlayerAlive(i))
+			continue;
+		
+		if(GetClientTeam(i) == GetClientTeam(client))
+			continue;
+		
+		float flEnemyPos[3];
+		GetClientAbsOrigin(i, flEnemyPos);
+		
+		vecGrenDelta = GetDeltaVector(client, i);
+		NormalizeVector(vecGrenDelta, vecGrenDelta);
+		GetEnemyPosToScreen(client, vecGrenDelta, screenx, screeny, GetVectorDistance(flMyPos, flEnemyPos) * 0.25);
+		
+		SetHudTextParams(screenx, screeny, 0.1, 255, 0, 0, 0, 0, 0.0, 0.0, 0.0);
+		ShowSyncHudText(client, g_hHudRadar[i], "⬤");
+	}
+	
+	SetHudTextParams(-0.7, -0.7, 0.1, 255, 255, 0, 0, 0, 0.0, 0.0, 0.0);
+	ShowSyncHudText(client, g_hHudRadar[client], "⬤");
+}
+
+stock void GetEnemyPosToScreen(int client, float vecDelta[3], float& xpos, float& ypos, float flRadius)
+{
+	if(flRadius > 290.0)
+		flRadius = 290.0;
+
+	float playerAngles[3]; 
+	GetClientEyeAngles(client, playerAngles);
+
+	float vecforward[3], right[3], up[3] = { 0.0, 0.0, 1.0 };
+	GetAngleVectors(playerAngles, vecforward, NULL_VECTOR, NULL_VECTOR );
+	vecforward[2] = 0.0;
+
+	NormalizeVector(vecforward, vecforward);
+	GetVectorCrossProduct(up, vecforward, right);
+
+	float front = GetVectorDotProduct(vecDelta, vecforward);
+	float side  = GetVectorDotProduct(vecDelta, right);
+
+	xpos = flRadius * -front;
+	ypos = flRadius * -side;
+	
+	float flRotation = (ArcTangent2(xpos, ypos) + FLOAT_PI) * (180.0 / FLOAT_PI);
+	
+	float yawRadians = -flRotation * FLOAT_PI / 180.0; // Convert back to radians
+	
+	// Rotate it around the circle
+	xpos = (290 + (flRadius * Cosine(yawRadians))) / 1000.0; // divide by 1000 to make it fit with HudTextParams
+	ypos = (290 - (flRadius * Sine(yawRadians)))   / 1000.0;
+}
+
+stock float[] GetDeltaVector(const int client, const int target)
+{
+	float vec[3];
+
+	float vecPlayer[3];	
+	GetClientAbsOrigin(client, vecPlayer);
+	
+	float vecPos[3];	
+	GetClientAbsOrigin(target, vecPos);
+	
+	SubtractVectors(vecPlayer, vecPos, vec);
+	return vec;
+}
+
+stock float Min(float one, float two)
+{
+	if(one < two)
 		return one;
-	else if(two > one)
+	else if(two < one)
 		return two;
 		
 	return two;
@@ -627,7 +711,7 @@ stock void FixSilentAimMovement(int client, float vel[3], float angles[3], float
 	float angMove[3];
 	GetVectorAngles(vecSilent, angMove);
 	
-	float flYaw = DEG2RAD(aimbotAngles[1] - angles[1] + angMove[1]);
+	float flYaw = DegToRad(aimbotAngles[1] - angles[1] + angMove[1]);
 	vel[0] = Cosine( flYaw ) * flSpeed;
 	vel[1] = Sine( flYaw ) * flSpeed;
 }

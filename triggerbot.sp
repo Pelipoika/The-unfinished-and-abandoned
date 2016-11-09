@@ -11,6 +11,7 @@
 
 Handle g_hHudInfo;
 Handle g_hHudShotCounter;
+Handle g_hHudEnemyAim;
 
 bool g_bZoomedOnly[MAXPLAYERS + 1];
 bool g_bIgnoreDeadRinger[MAXPLAYERS + 1];
@@ -63,6 +64,7 @@ public void OnPluginStart()
 	
 	g_hHudInfo = CreateHudSynchronizer();
 	g_hHudShotCounter = CreateHudSynchronizer();
+	g_hHudEnemyAim = CreateHudSynchronizer();
 	
 	g_hPrimaryAttack = DHookCreate(437, HookType_Entity, ReturnType_Void, ThisPointer_CBaseEntity, CTFWeaponBase_PrimaryAttack);
 }
@@ -405,9 +407,11 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		float frametime = GetTickInterval();
 		if(frametime < (1.0 * 10.0 ^ -5.0))
 			return Plugin_Continue;
-	
-		SetEntPropVector(client, Prop_Send, "m_vecPunchAngle", NULL_VECTOR);
-		SetEntPropVector(client, Prop_Send, "m_vecPunchAngleVel", NULL_VECTOR);
+			
+		EnemyIsAimingAtYou(client);
+		
+		SetEntPropVector(client, Prop_Send, "m_vecPunchAngle",    view_as<float>({0.0, 0.0, 0.0}));
+		SetEntPropVector(client, Prop_Send, "m_vecPunchAngleVel", view_as<float>({0.0, 0.0, 0.0}));
 		
 		if(!(buttons & IN_ATTACK) && !g_bAutoShoot[client])
 			return Plugin_Continue;
@@ -434,10 +438,13 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			GetEntPropVector(iTarget, Prop_Data, "m_vecAbsVelocity", target_velocity);
 			
 			float delta[3];
-			float flLeadTime = GetClientAvgLatency(client, NetFlow_Both) * 100;
-			delta[0] += (-flLeadTime * target_velocity[0]);
-			delta[1] += (-flLeadTime * target_velocity[1]);
-			delta[2] += (-flLeadTime * target_velocity[2]);
+			
+			float flLatency = GetClientAvgLatency(client, NetFlow_Both);
+			float flLeadTime = -(flLatency) * 100;	//Still don't know how to properly predict serverside
+			
+			delta[0] += (flLeadTime * target_velocity[0]);
+			delta[1] += (flLeadTime * target_velocity[1]);
+			delta[2] += (flLeadTime * target_velocity[2]);
 			
 			float scale = GetVectorLength(delta);
 			NormalizeVector(delta, delta);
@@ -506,6 +513,77 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		return Plugin_Changed;
 	
 	return Plugin_Continue;
+}
+
+stock void EnemyIsAimingAtYou(int client)
+{
+	float flMyPos[3];
+	GetClientEyePosition(client, flMyPos);
+	
+	float flMaxAngle = 999.0;
+	float flAimingPercent;
+	
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		if(i == client)
+			continue;
+		
+		if(!IsClientInGame(i))
+			continue;
+			
+		if(!IsPlayerAlive(i))
+			continue;
+		
+		if(GetClientTeam(i) == GetClientTeam(client))
+			continue;
+		
+		float flTheirPos[3];
+		GetClientEyePosition(i, flTheirPos);
+		
+		TR_TraceRayFilter(flMyPos, flTheirPos, MASK_SHOT, RayType_EndPoint, AimTargetFilter, client);
+		if(TR_DidHit())
+		{
+			int entity = TR_GetEntityIndex();
+			if(entity == i)
+			{
+				float vDistance[3];
+				SubtractVectors(flMyPos, flTheirPos, vDistance);
+				NormalizeVector(vDistance, vDistance);
+				
+				float flTheirEyeAng[3];
+				GetClientEyeAngles(i, flTheirEyeAng);
+				
+				float vForward[3];
+				GetAngleVectors(flTheirEyeAng, vForward, NULL_VECTOR, NULL_VECTOR);
+				
+				float flAngle = RadToDeg(ArcCosine(GetVectorDotProduct(vForward, vDistance)));
+				
+				if(flMaxAngle > flAngle && flAngle <= 60)
+				{
+					flMaxAngle = flAngle;
+					flAimingPercent = 100 - (flMaxAngle * (100 / 60));
+				}
+			}
+		}
+	}
+	
+	if(flMaxAngle != 999)
+	{
+		char cPlayerAim[120];
+		
+		if(flAimingPercent >= 85.0)
+		{
+			SetHudTextParams(-1.0, 0.0, 0.1, 255, 0, 0, 0, 0, 0.0, 0.0, 0.0);
+			Format(cPlayerAim, sizeof(cPlayerAim), "Enemy is AIMING at YOU %.0f%%", flAimingPercent);
+		}
+		else
+		{
+			SetHudTextParams(-1.0, 0.0, 0.1, 0, 255, 0, 0, 0, 0.0, 0.0, 0.0);
+			Format(cPlayerAim, sizeof(cPlayerAim), "Enemy can SEE YOU %.0f%%", flAimingPercent);
+		}
+		
+		ShowSyncHudText(client, g_hHudEnemyAim, cPlayerAim);
+	}
 }
 
 stock float Max(float one, float two)

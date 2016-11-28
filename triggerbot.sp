@@ -602,11 +602,10 @@ stock void Radar(int client)
 		if(GetClientTeam(i) == GetClientTeam(client))
 			continue;
 		
-		if(GetClientTeam(i) != 2 || GetClientTeam(i) != 3)
-			continue;
-		
 		float flEnemyPos[3];
 		GetClientAbsOrigin(i, flEnemyPos);
+		
+		flEnemyPos[2] = flMyPos[2]; //We only care about 2D
 		
 		vecGrenDelta = GetDeltaVector(client, i);
 		NormalizeVector(vecGrenDelta, vecGrenDelta);

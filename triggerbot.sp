@@ -35,10 +35,16 @@ bool g_bShot[MAXPLAYERS + 1];
 int g_iShots[MAXPLAYERS + 1];
 int g_iShotsHit[MAXPLAYERS + 1];
 
+#define UMSG_SPAM_DELAY 0.1
+float g_flNextTime[MAXPLAYERS + 1];
+
+ConVar g_hAddition;
+
 //Add Sniper Rifle: Wait for charge
 //Auto Airblast
 //Auto sticky det
 //(NetVar( int*, pBaseWeapon, m_iWeaponState )) = AC_STATE_IDLE;  
+//Healer priority
 
 public Plugin myinfo = 
 {
@@ -61,6 +67,8 @@ public void OnPluginStart()
 		}
 	}
 	
+	g_hAddition = CreateConVar("sm_triggerbot_extra", "100", "Bye", FCVAR_PROTECTED);
+	
 	g_hHudInfo = CreateHudSynchronizer();
 	g_hHudShotCounter = CreateHudSynchronizer();
 	g_hHudEnemyAim = CreateHudSynchronizer();
@@ -72,21 +80,6 @@ public void OnPluginStart()
 	}
 	
 	g_hPrimaryAttack = DHookCreate(437, HookType_Entity, ReturnType_Void, ThisPointer_CBaseEntity, CTFWeaponBase_PrimaryAttack);
-}
-
-public void OnPluginEnd()
-{
-	int index = -1;
-	while ((index = FindEntityByClassname(index, "tf_glow")) != -1)
-	{
-		char strName[64];
-		GetEntPropString(index, Prop_Data, "m_iName", strName, sizeof(strName));
-		if(StrEqual(strName, "ESPGlow"))
-		{
-			AcceptEntityInput(index, "ClearParent");
-			AcceptEntityInput(index, "Kill");
-		}
-	}
 }
 
 public void OnClientPutInServer(int client)
@@ -112,22 +105,9 @@ public void OnClientPutInServer(int client)
 	g_iShots[client] = 0;
 	g_iShotsHit[client] = 0;
 	
-	TF2_CreateGlow(client);
+	g_flNextTime[client] = 0.0;
 	
 	SDKHook(client, SDKHook_TraceAttackPost, TraceAttack);
-}
-
-public void OnClientDisconnect(int client)
-{
-	int index = -1;
-	while ((index = FindEntityByClassname(index, "tf_glow")) != -1)
-	{
-		if (GetEntPropEnt(index, Prop_Send, "m_hTarget") == client)
-		{
-			AcceptEntityInput(index, "ClearParent");
-			AcceptEntityInput(index, "Kill");
-		}
-	}
 }
 
 public Action Command_Trigger(int client, int args)
@@ -412,10 +392,16 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		float frametime = GetTickInterval();
 		if(frametime < (1.0 * 10.0 ^ -5.0))
 			return Plugin_Continue;
-			
-		EnemyIsAimingAtYou(client);
-		Radar(client);
 		
+		if(g_flNextTime[client] <= GetGameTime())
+		{
+			Radar(client);
+		
+			EnemyIsAimingAtYou(client);
+			
+			g_flNextTime[client] = GetGameTime() + UMSG_SPAM_DELAY;
+		}
+			
 		SetEntPropVector(client, Prop_Send, "m_vecPunchAngle",    view_as<float>({0.0, 0.0, 0.0}));
 		SetEntPropVector(client, Prop_Send, "m_vecPunchAngleVel", view_as<float>({0.0, 0.0, 0.0}));
 		
@@ -423,8 +409,13 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			return Plugin_Continue;
 		
 		int iTarget = FindClosestTarget(client);
+		
 		if(iTarget != -1)
-		{		
+		{
+			int iHealer = FindHealer(iTarget);
+			if (iHealer != -1)
+				iTarget = iHealer;
+		
 			SetHudTextParams(0.55, 0.55, 0.1, 0, 255, 0, 0, 0, 0.0, 0.0, 0.0);
 			ShowSyncHudText(client, g_hHudInfo, "[AIMING AT: %N [%i HP]", iTarget, GetEntProp(iTarget, Prop_Send, "m_iHealth"));
 		
@@ -446,7 +437,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			float delta[3];
 			
 			float flLatency = GetClientAvgLatency(client, NetFlow_Both);
-			float flLeadTime = -(flLatency) * 100;	//Still don't know how to properly predict serverside
+			float flLeadTime = -(flLatency) * g_hAddition.FloatValue;	//Still don't know how to properly predict serverside
 			
 			delta[0] += (flLeadTime * target_velocity[0]);
 			delta[1] += (flLeadTime * target_velocity[1]);
@@ -576,12 +567,12 @@ stock void EnemyIsAimingAtYou(int client)
 		
 		if(flAimingPercent >= 85.0)
 		{
-			SetHudTextParams(-1.0, 0.0, 0.1, 255, 0, 0, 0, 0, 0.0, 0.0, 0.0);
+			SetHudTextParams(-1.0, 0.0, UMSG_SPAM_DELAY + 0.5, 255, 0, 0, 0, 0, 0.0, 0.0, 0.0);
 			Format(cPlayerAim, sizeof(cPlayerAim), "Enemy is AIMING at YOU %.0f%%", flAimingPercent);
 		}
 		else
 		{
-			SetHudTextParams(-1.0, 0.0, 0.1, 0, 255, 0, 0, 0, 0.0, 0.0, 0.0);
+			SetHudTextParams(-1.0, 0.0, UMSG_SPAM_DELAY + 0.5, 0, 255, 0, 0, 0, 0.0, 0.0, 0.0);
 			Format(cPlayerAim, sizeof(cPlayerAim), "Enemy can SEE YOU %.0f%%", flAimingPercent);
 		}
 		
@@ -611,6 +602,9 @@ stock void Radar(int client)
 		if(GetClientTeam(i) == GetClientTeam(client))
 			continue;
 		
+		if(GetClientTeam(i) != 2 || GetClientTeam(i) != 3)
+			continue;
+		
 		float flEnemyPos[3];
 		GetClientAbsOrigin(i, flEnemyPos);
 		
@@ -618,11 +612,11 @@ stock void Radar(int client)
 		NormalizeVector(vecGrenDelta, vecGrenDelta);
 		GetEnemyPosToScreen(client, vecGrenDelta, screenx, screeny, GetVectorDistance(flMyPos, flEnemyPos) * 0.25);
 		
-		SetHudTextParams(screenx, screeny, 0.1, 255, 0, 0, 0, 0, 0.0, 0.0, 0.0);
+		SetHudTextParams(screenx, screeny, UMSG_SPAM_DELAY + 0.5, 255, 0, 0, 0, 0, 0.0, 0.0, 0.0);
 		ShowSyncHudText(client, g_hHudRadar[i], "⬤");
 	}
 	
-	SetHudTextParams(-0.7, -0.7, 0.1, 255, 255, 0, 0, 0, 0.0, 0.0, 0.0);
+	SetHudTextParams(-0.7, -0.7, UMSG_SPAM_DELAY + 0.5, 255, 255, 0, 0, 0, 0.0, 0.0, 0.0);
 	ShowSyncHudText(client, g_hHudRadar[client], "⬤");
 }
 
@@ -678,28 +672,6 @@ stock float Min(float one, float two)
 		return two;
 		
 	return two;
-}
-
-public Action OnGlowTransmit(int entity, int other)
-{
-	SetEdictFlags(entity, FL_EDICT_FULLCHECK|FL_EDICT_CHANGED);
-	
-	int GlowOwner = GetEntPropEnt(entity, Prop_Send, "m_hTarget");
-	
-	if(GlowOwner == other)
-		return Plugin_Handled;
-
-	if(!g_bWallhack[other])
-		return Plugin_Handled;
-	
-	if(GetClientTeam(GlowOwner) == 3)
-		SetVariantColor({91, 122, 140, 255});
-	else
-		SetVariantColor({189, 59, 140, 255});
-	
-	AcceptEntityInput(entity, "SetGlowColor");
-	
-	return Plugin_Continue;
 }
 
 stock void FixSilentAimMovement(int client, float vel[3], float angles[3], float aimbotAngles[3])
@@ -835,6 +807,23 @@ stock int FindClosestTarget(int iViewer)
 	return iBestTarget;
 }
 
+stock int FindHealer(int client)
+{
+	int index = -1;
+	while ((index = FindEntityByClassname(index, "tf_weapon_medigun")) != -1)
+	{
+		int hTarget = GetEntPropEnt(index, Prop_Send, "m_hHealingTarget");
+		int hHealer = GetEntPropEnt(index, Prop_Send, "m_hOwnerEntity");
+		
+		if(client == hTarget)
+		{
+			return hHealer;
+		}
+	}
+	
+	return -1;
+}
+
 public bool AimTargetFilter(int entity, int contentsMask, any iExclude)
 {
 	char class[64];
@@ -843,6 +832,13 @@ public bool AimTargetFilter(int entity, int contentsMask, any iExclude)
 	if(StrEqual(class, "player"))
 	{
 		if(GetClientTeam(entity) == GetClientTeam(iExclude))
+		{
+			return false;
+		}
+	}
+	else if(StrEqual(class, "entity_medigun_shield"))
+	{
+		if(GetEntProp(entity, Prop_Send, "m_iTeamNum") == GetClientTeam(iExclude))
 		{
 			return false;
 		}
@@ -881,31 +877,4 @@ stock void TE_FireBullets(float vecOrigin[3], float vecAngles0, float vecAngles1
 	TE_WriteFloat("m_flSpread", flSpread);
 	TE_WriteNum("m_bCritical", bCritical);
 	TE_SendToAll();
-}
-
-stock int TF2_CreateGlow(int iEnt)
-{
-	char oldEntName[64];
-	GetEntPropString(iEnt, Prop_Data, "m_iName", oldEntName, sizeof(oldEntName));
-
-	char strName[126], strClass[64];
-	GetEntityClassname(iEnt, strClass, sizeof(strClass));
-	Format(strName, sizeof(strName), "%s%i", strClass, iEnt);
-	DispatchKeyValue(iEnt, "targetname", strName);
-	
-	int ent = CreateEntityByName("tf_glow");
-	DispatchKeyValue(ent, "targetname", "ESPGlow");
-	DispatchKeyValue(ent, "target", strName);
-	DispatchKeyValue(ent, "Mode", "0");
-	DispatchSpawn(ent);
-	
-	AcceptEntityInput(ent, "Enable");
-	
-	//Change name back to old name because we don't need it anymore.
-	SetEntPropString(iEnt, Prop_Data, "m_iName", oldEntName);
-	
-	SetEdictFlags(ent, FL_EDICT_FULLCHECK|FL_EDICT_CHANGED);
-	SDKHook(ent, SDKHook_SetTransmit, OnGlowTransmit);
-	
-	return ent;
 }

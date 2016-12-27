@@ -52,7 +52,7 @@ public Action Command_Rainbow(int client, int argc)
 		}
 		else
 		{
-			int iGlow = g_iPlayerGlowEntity[client];
+			int iGlow = EntRefToEntIndex(g_iPlayerGlowEntity[client]);
 			if(iGlow != INVALID_ENT_REFERENCE)
 			{
 				AcceptEntityInput(iGlow, "Kill");

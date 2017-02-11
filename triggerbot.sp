@@ -35,16 +35,15 @@ bool g_bShot[MAXPLAYERS + 1];
 int g_iShots[MAXPLAYERS + 1];
 int g_iShotsHit[MAXPLAYERS + 1];
 
-#define UMSG_SPAM_DELAY 0.1
+#define UMSG_SPAM_DELAY 0.025
 float g_flNextTime[MAXPLAYERS + 1];
 
-ConVar g_hAddition;
+//ConVar g_hAddition;
 
 //Add Sniper Rifle: Wait for charge
 //Auto Airblast
 //Auto sticky det
 //(NetVar( int*, pBaseWeapon, m_iWeaponState )) = AC_STATE_IDLE;  
-//Healer priority
 
 public Plugin myinfo = 
 {
@@ -67,7 +66,7 @@ public void OnPluginStart()
 		}
 	}
 	
-	g_hAddition = CreateConVar("sm_triggerbot_extra", "100", "Bye", FCVAR_PROTECTED);
+//	g_hAddition = CreateConVar("sm_triggerbot_extra", "100", "Bye", FCVAR_PROTECTED);
 	
 	g_hHudInfo = CreateHudSynchronizer();
 	g_hHudShotCounter = CreateHudSynchronizer();
@@ -235,9 +234,9 @@ public int MenuMiscHandler(Menu menu, MenuAction action, int param1, int param2)
 	if (action == MenuAction_Select)
 	{
 		switch(param2)
-		{		
+		{
 			case 0: g_bNoSlowDown[param1] = !g_bNoSlowDown[param1];
-			case 1: g_bAllCrits[param1] = !g_bAllCrits[param1];
+			case 1: g_bAllCrits[param1]   = !g_bAllCrits[param1];
 			case 2: 
 			{
 				if(!g_bShotCounter[param1])
@@ -265,8 +264,8 @@ public int MenuMiscHandler(Menu menu, MenuAction action, int param1, int param2)
 					g_bShotCounter[param1] = false;
 				}
 				
-				g_bShot[param1] = false;
-				g_iShots[param1] = 0;
+				g_bShot[param1]     = false;
+				g_iShots[param1]    = 0;
 				g_iShotsHit[param1] = 0;				
 			}
 			case 3: g_bWallhack[param1] = !g_bWallhack[param1];
@@ -389,10 +388,6 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	
 	if(g_bAimbot[client])
 	{
-		float frametime = GetTickInterval();
-		if(frametime < (1.0 * 10.0 ^ -5.0))
-			return Plugin_Continue;
-		
 		if(g_flNextTime[client] <= GetGameTime())
 		{
 			Radar(client);
@@ -405,6 +400,10 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		SetEntPropVector(client, Prop_Send, "m_vecPunchAngle",    view_as<float>({0.0, 0.0, 0.0}));
 		SetEntPropVector(client, Prop_Send, "m_vecPunchAngleVel", view_as<float>({0.0, 0.0, 0.0}));
 		
+	//	int iAw = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
+	//	float flNext = GetEntPropFloat(iAw, Prop_Send, "m_flNextPrimaryAttack");
+		
+		bool bCanFire = true; //(flNext <= GetEntProp(client, Prop_Send, "m_nTickBase") * GetTickInterval());
 		if(!(buttons & IN_ATTACK) && !g_bAutoShoot[client])
 			return Plugin_Continue;
 		
@@ -428,33 +427,16 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				return Plugin_Continue;
 			
 			utils_EntityGetBonePosition(iTarget, iBone, target_point, vNothing);
-			
 			target_point[2] += 2.0;
-			
+						
+			float flLatency = GetClientLatency(client, NetFlow_Both);
 			float target_velocity[3];
 			GetEntPropVector(iTarget, Prop_Data, "m_vecAbsVelocity", target_velocity);
 			
-			float delta[3];
-			
-			float flLatency = GetClientAvgLatency(client, NetFlow_Both);
-			float flLeadTime = -(flLatency) * g_hAddition.FloatValue;	//Still don't know how to properly predict serverside
-			
-			delta[0] += (flLeadTime * target_velocity[0]);
-			delta[1] += (flLeadTime * target_velocity[1]);
-			delta[2] += (flLeadTime * target_velocity[2]);
-			
-			float scale = GetVectorLength(delta);
-			NormalizeVector(delta, delta);
-			
-			float m_vecTargetVelocity[3];
-			m_vecTargetVelocity[0] = (scale * delta[0]) + target_velocity[0];
-			m_vecTargetVelocity[1] = (scale * delta[1]) + target_velocity[1];
-			m_vecTargetVelocity[2] = (scale * delta[2]) + target_velocity[2];
-			
-			target_point[0] += frametime * m_vecTargetVelocity[0];
-			target_point[1] += frametime * m_vecTargetVelocity[1];
-			target_point[2] += frametime * m_vecTargetVelocity[2];
-			
+			target_point[0] -= (target_velocity[0] * flLatency);
+			target_point[1] -= (target_velocity[1] * flLatency);
+			target_point[2] -= (target_velocity[2] * flLatency);
+
 			float eye_to_target[3];
 			SubtractVectors(target_point, myEyePosition, eye_to_target);
 			GetVectorAngles(eye_to_target, eye_to_target);
@@ -493,14 +475,20 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			
 			if(!g_bSilentAim[client])
 			{
-				TeleportEntity(client, NULL_VECTOR, eye_to_target, NULL_VECTOR);
+				if(bCanFire)
+				{
+					TeleportEntity(client, NULL_VECTOR, eye_to_target, NULL_VECTOR);
+					angles = eye_to_target;
+				}
 			}
 			else
 			{
-				FixSilentAimMovement(client, vel, angles, eye_to_target);
+				if(bCanFire)
+				{
+					FixSilentAimMovement(client, vel, angles, eye_to_target);
+					angles = eye_to_target;
+				}
 			}
-			
-			angles = eye_to_target;
 			
 			bChanged = true;
 		}
@@ -615,14 +603,14 @@ stock void Radar(int client)
 		ShowSyncHudText(client, g_hHudRadar[i], "⬤");
 	}
 	
-	SetHudTextParams(-0.7, -0.7, UMSG_SPAM_DELAY + 0.5, 255, 255, 0, 0, 0, 0.0, 0.0, 0.0);
-	ShowSyncHudText(client, g_hHudRadar[client], "⬤");
+//	SetHudTextParams(-1.0, -1.0, UMSG_SPAM_DELAY + 0.5, 255, 255, 0, 0, 0, 0.0, 0.0, 0.0);
+//	ShowSyncHudText(client, g_hHudRadar[client], "⬤");
 }
 
 stock void GetEnemyPosToScreen(int client, float vecDelta[3], float& xpos, float& ypos, float flRadius)
 {
-	if(flRadius > 290.0)
-		flRadius = 290.0;
+	if(flRadius > 400.0)
+		flRadius = 400.0;
 
 	float playerAngles[3]; 
 	GetClientEyeAngles(client, playerAngles);
@@ -645,8 +633,8 @@ stock void GetEnemyPosToScreen(int client, float vecDelta[3], float& xpos, float
 	float yawRadians = -flRotation * FLOAT_PI / 180.0; // Convert back to radians
 	
 	// Rotate it around the circle
-	xpos = (290 + (flRadius * Cosine(yawRadians))) / 1000.0; // divide by 1000 to make it fit with HudTextParams
-	ypos = (290 - (flRadius * Sine(yawRadians)))   / 1000.0;
+	xpos = (500 + (flRadius * Cosine(yawRadians))) / 1000.0; // divide by 1000 to make it fit with HudTextParams
+	ypos = (500 - (flRadius * Sine(yawRadians)))   / 1000.0;
 }
 
 stock float[] GetDeltaVector(const int client, const int target)

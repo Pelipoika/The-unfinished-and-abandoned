@@ -64,26 +64,31 @@ public void FrameVoteStart(DataPack pack)
 	pack.ReadString(DetailsString, sizeof(DetailsString));
 	
 	int m_iEntityVotedAgainst = pack.ReadCell();
-
-	char TeamColor[16];
-	switch(TF2_GetClientTeam(m_iEntityVotedAgainst))
+	
+	if(m_iEntityVotedAgainst > 0 && m_iEntityVotedAgainst <= MaxClients && IsClientInGame(m_iEntityVotedAgainst))
 	{
-		case TFTeam_Blue: TeamColor = "{blue}";
-		case TFTeam_Red:  TeamColor = "{red}";
-		default:          TeamColor = "{gray}";
+		char TeamColor[16];
+		switch(TF2_GetClientTeam(m_iEntityVotedAgainst))
+		{
+			case TFTeam_Blue: TeamColor = "{blue}";
+			case TFTeam_Red:  TeamColor = "{red}";
+			default:          TeamColor = "{gray}";
+		}
+		
+		char Reason[32];
+		if(StrEqual(DisplayString,      "#TF_vote_kick_player_other"))    Reason = "{gray}No reason";
+		else if(StrEqual(DisplayString, "#TF_vote_kick_player_scamming")) Reason = "{red}Scamming";	
+		else if(StrEqual(DisplayString, "#TF_vote_kick_player_idle"))     Reason = "{red}Idle";
+		else if(StrEqual(DisplayString, "#TF_vote_kick_player_cheating")) Reason = "{fullred}Cheating";
+		
+		CPrintToChatAllEx(m_iEntityHoldingVote, "{teamcolor}%N{default} wants to kick %s%s{default} for %s", m_iEntityHoldingVote, TeamColor, DetailsString, Reason);
 	}
-	
-	char Reason[32];
-	if(StrEqual(DisplayString,      "#TF_vote_kick_player_other"))    Reason = "{gray}No reason";
-	else if(StrEqual(DisplayString, "#TF_vote_kick_player_scamming")) Reason = "{red}Scamming";	
-	else if(StrEqual(DisplayString, "#TF_vote_kick_player_idle"))     Reason = "{red}Idle";
-	else if(StrEqual(DisplayString, "#TF_vote_kick_player_cheating")) Reason = "{fullred}Cheating";
-	
-	CPrintToChatAllEx(m_iEntityHoldingVote, "{teamcolor}%N{default} wants to kick %s%s{default} for %s", m_iEntityHoldingVote, TeamColor, DetailsString, Reason);
 }
 
 public Action VotePass(UserMsg msg_id, BfRead msg, const int[] players, int playersNum, bool reliable, bool init)
 {
+	PrintToChatAll("VOTE PASS");
+
 	TFTeam m_iOnlyTeamToVote = view_as<TFTeam>(BfReadByte(msg));
 	
 	char VotePassedString[32], DetailsString[32];

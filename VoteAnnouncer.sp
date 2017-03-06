@@ -16,8 +16,9 @@ public Plugin myinfo =
 
 public void OnPluginStart()
 {
-	HookUserMessage(GetUserMessageId("VoteStart"), VoteStart);
-	HookUserMessage(GetUserMessageId("VotePass"),  VotePass);
+	HookUserMessage(GetUserMessageId("VoteStart"),  VoteStart);
+	HookUserMessage(GetUserMessageId("VotePass"),   VotePass);
+//	HookUserMessage(GetUserMessageId("VoteFailed"), VoteFailed);
 }
 
 public Action VoteStart(UserMsg msg_id, BfRead msg, const int[] players, int playersNum, bool reliable, bool init)
@@ -65,30 +66,41 @@ public void FrameVoteStart(DataPack pack)
 	
 	int m_iEntityVotedAgainst = pack.ReadCell();
 	
-	if(m_iEntityVotedAgainst > 0 && m_iEntityVotedAgainst <= MaxClients && IsClientInGame(m_iEntityVotedAgainst))
+//	PrintToChatAll("%i %s %s %i", m_iEntityHoldingVote, DisplayString, DetailsString, m_iEntityVotedAgainst);
+	
+	if(StrContains(DisplayString, "#TF_vote_kick_player_") != -1)
 	{
-		char TeamColor[16];
-		switch(TF2_GetClientTeam(m_iEntityVotedAgainst))
+		if(m_iEntityVotedAgainst > 0 && m_iEntityVotedAgainst <= MaxClients && IsClientInGame(m_iEntityVotedAgainst))
 		{
-			case TFTeam_Blue: TeamColor = "{blue}";
-			case TFTeam_Red:  TeamColor = "{red}";
-			default:          TeamColor = "{gray}";
+			char TeamColor[16];
+			switch(TF2_GetClientTeam(m_iEntityVotedAgainst))
+			{
+				case TFTeam_Blue: TeamColor = "{blue}";
+				case TFTeam_Red:  TeamColor = "{red}";
+				default:          TeamColor = "{gray}";
+			}
+			
+			char Reason[32];
+			if(StrEqual(DisplayString,      "#TF_vote_kick_player_other"))    Reason = "{gray}No reason";
+			else if(StrEqual(DisplayString, "#TF_vote_kick_player_scamming")) Reason = "{red}Scamming";	
+			else if(StrEqual(DisplayString, "#TF_vote_kick_player_idle"))     Reason = "{red}Idle";
+			else if(StrEqual(DisplayString, "#TF_vote_kick_player_cheating")) Reason = "{fullred}Cheating";
+			
+			CPrintToChatAllEx(m_iEntityHoldingVote, "{teamcolor}%N{default} wants to kick %s%s{default} for %s", m_iEntityHoldingVote, TeamColor, DetailsString, Reason);
 		}
-		
-		char Reason[32];
-		if(StrEqual(DisplayString,      "#TF_vote_kick_player_other"))    Reason = "{gray}No reason";
-		else if(StrEqual(DisplayString, "#TF_vote_kick_player_scamming")) Reason = "{red}Scamming";	
-		else if(StrEqual(DisplayString, "#TF_vote_kick_player_idle"))     Reason = "{red}Idle";
-		else if(StrEqual(DisplayString, "#TF_vote_kick_player_cheating")) Reason = "{fullred}Cheating";
-		
-		CPrintToChatAllEx(m_iEntityHoldingVote, "{teamcolor}%N{default} wants to kick %s%s{default} for %s", m_iEntityHoldingVote, TeamColor, DetailsString, Reason);
+	}
+	else if(StrEqual(DisplayString, "#TF_vote_changelevel"))
+	{
+		CPrintToChatAllEx(m_iEntityHoldingVote, "{teamcolor}%N{default} wants to change map to {grey}%s", m_iEntityHoldingVote, DetailsString);
+	}
+	else if(StrEqual(DisplayString, "#TF_vote_changechallenge"))
+	{
+		CPrintToChatAllEx(m_iEntityHoldingVote, "{teamcolor}%N{default} wants to change mission to {grey}%s", m_iEntityHoldingVote, DetailsString);
 	}
 }
 
 public Action VotePass(UserMsg msg_id, BfRead msg, const int[] players, int playersNum, bool reliable, bool init)
 {
-	PrintToChatAll("VOTE PASS");
-
 	TFTeam m_iOnlyTeamToVote = view_as<TFTeam>(BfReadByte(msg));
 	
 	char VotePassedString[32], DetailsString[32];
@@ -114,14 +126,27 @@ public void FrameVotePass(DataPack pack)
 	char VotePassedString[32], DetailsString[32];
 	pack.ReadString(VotePassedString, sizeof(VotePassedString));
 	pack.ReadString(DetailsString, sizeof(DetailsString));
-
-	char TeamColor[16];
-	switch(m_iOnlyTeamToVote)
-	{
-		case TFTeam_Blue: TeamColor = "{blue}";
-		case TFTeam_Red:  TeamColor = "{red}";
-		default:          TeamColor = "{gray}";
-	}
 	
-	CPrintToChatAll("{default}Kicking player: %s%N{default}...", TeamColor, DetailsString);
+//	PrintToChatAll("%i %s %s", m_iOnlyTeamToVote, VotePassedString, DetailsString);
+	
+	if(StrEqual(VotePassedString, "#TF_vote_passed_changechallenge"))
+	{
+		CPrintToChatAll("{community}VotePass{default} changing mission to {gray}%s{default}...", DetailsString);
+	}
+	else if(StrEqual(VotePassedString, "#TF_vote_passed_changelevel"))
+	{
+		CPrintToChatAll("{community}VotePass{default} changing map to {gray}%s{default}...", DetailsString);
+	}
+	else if(StrEqual(VotePassedString, "#TF_vote_passed_kick_player"))
+	{
+		char TeamColor[16];
+		switch(m_iOnlyTeamToVote)
+		{
+			case TFTeam_Blue: TeamColor = "{blue}";
+			case TFTeam_Red:  TeamColor = "{red}";
+			default:          TeamColor = "{gray}";
+		}
+		
+		CPrintToChatAll("{default}Kicking player: %s%N{default}...", TeamColor, DetailsString);
+	}
 }

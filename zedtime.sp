@@ -37,29 +37,57 @@ public void OnPluginStart()
 	cvarCheats = FindConVar("sv_cheats");
 	
 	int iHooks = 0;
-	char strConCommand[128];
+	char strConCommand[PLATFORM_MAX_PATH];
 	bool bIsCommand;
 	int iFlags;
+	
+	AddCommandListener(OnCheatCommand, "addcond");
+	AddCommandListener(OnCheatCommand, "removecond");
+	
 	Handle hSearch = FindFirstConCommand(strConCommand, sizeof(strConCommand), bIsCommand, iFlags);
 	do
 	{
-		if(bIsCommand && iFlags & FCVAR_CHEAT)
+		if(bIsCommand && (iFlags & FCVAR_CHEAT))
 		{
 			if(StrEqual(strConCommand, "disguise") || StrEqual(strConCommand, "lastdisguise"))
 				continue;
-				
-			RegConsoleCmd(strConCommand, OnCheatCommand);
+			
+			PrintToServer("%i %s", bIsCommand, strConCommand);
+			AddCommandListener(OnCheatCommand, strConCommand);
 			iHooks++;
 		}
 	}
 	while(FindNextConCommand(hSearch, strConCommand, sizeof(strConCommand), bIsCommand, iFlags));
-
+	
 	PrintToServer("[Zed Time] Hooked %i cheat commands", iHooks);
+
+/*	int flags = GetCommandFlags("tf_mvm_jump_to_wave");
+	SetCommandFlags("tf_mvm_jump_to_wave", flags & ~FCVAR_CHEAT);
+	RegConsoleCmd("tf_mvm_jump_to_wave", Command_JumpToWave);
+	
+	flags = GetCommandFlags("tf_mvm_popfile");
+	SetCommandFlags("tf_mvm_popfile", flags & ~FCVAR_CHEAT);
+	RegConsoleCmd("tf_mvm_popfile", Command_JumpToWave);
+	
+	flags = GetCommandFlags("ent_create");
+	SetCommandFlags("ent_create", flags & ~FCVAR_CHEAT);
+	RegConsoleCmd("ent_create", Command_JumpToWave);*/
 	
 	HookEvent("player_death", Event_Death);
 	HookEvent("mvm_tank_destroyed_by_players", Event_Notable);
 	
 	RegAdminCmd("sm_slowmo", Command_ToggleSlowmo, ADMFLAG_ROOT);
+}
+
+public Action Command_JumpToWave(int client, int args)
+{
+	if(client > 0 && !CheckCommandAccess(client, "", ADMFLAG_ROOT, true))
+	{
+		PrintToChat(client, "You cant use this command");
+		return Plugin_Stop;
+	}
+		
+	return Plugin_Continue;
 }
 
 public Action Command_ToggleSlowmo(int client, int args)
@@ -74,13 +102,16 @@ public Action Command_ToggleSlowmo(int client, int args)
 	return Plugin_Handled;
 }
 
-public Action OnCheatCommand(int client, int args)
+public Action OnCheatCommand(int client, const char[] command, int argc)
 {
-	if(client <= 0 || g_bZedTime)
-		return Plugin_Continue;
-
-	PrintToConsole(client, "Cheater! %s", args);
-	return Plugin_Handled;
+	if(g_bZedTime)
+	{
+		PrintToChatAll("OnCheatCommand %N %s %i", client, command, argc);
+		
+		return Plugin_Handled;
+	}
+	
+	return Plugin_Continue;
 }
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])

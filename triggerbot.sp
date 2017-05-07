@@ -2,7 +2,6 @@
 #include <sdkhooks>
 #include <tf2_stocks>
 #include <tf2attributes>
-#include <utilsext>
 #include <dhooks>
 
 #pragma newdecls required;
@@ -12,51 +11,73 @@ Handle g_hHudShotCounter;
 Handle g_hHudEnemyAim;
 Handle g_hHudRadar[MAXPLAYERS + 1];
 
-bool g_bZoomedOnly[MAXPLAYERS + 1];
-bool g_bIgnoreDeadRinger[MAXPLAYERS + 1];
-bool g_bIgnoreCloaked[MAXPLAYERS + 1];
-bool g_bIgnoreDisguised[MAXPLAYERS + 1];
-bool g_bAutoBackstab[MAXPLAYERS + 1];
-bool g_bWaitForCharge[MAXPLAYERS + 1];
 bool g_bNoSlowDown[MAXPLAYERS + 1];
 bool g_bAllCrits[MAXPLAYERS + 1];
-bool g_bAutoStrafe[MAXPLAYERS + 1];
-bool g_bBhop[MAXPLAYERS + 1];
 bool g_bNoSpread[MAXPLAYERS + 1];
 bool g_bAimbot[MAXPLAYERS + 1];
 bool g_bAutoShoot[MAXPLAYERS + 1];
 bool g_bSilentAim[MAXPLAYERS + 1];
 bool g_bShotCounter[MAXPLAYERS + 1];
-bool g_bWallhack[MAXPLAYERS + 1];
+bool g_bBunnyHop[MAXPLAYERS + 1];
+bool g_bSpectators[MAXPLAYERS + 1];
 
 Handle g_hPrimaryAttack;
+
+Handle g_hGetWeaponID;
+Handle g_hGetProjectileSpeed;
+Handle g_hGetProjectileGravity;
+Handle g_hGetMaxClip;
+
+Handle g_hLookupBone;
+Handle g_hGetBonePosition;
 
 bool g_bShot[MAXPLAYERS + 1];
 int g_iShots[MAXPLAYERS + 1];
 int g_iShotsHit[MAXPLAYERS + 1];
 
-#define UMSG_SPAM_DELAY 0.025
+#define UMSG_SPAM_DELAY 0.1
 float g_flNextTime[MAXPLAYERS + 1];
 
-//ConVar g_hAddition;
+// Spectator Movement modes
+enum {
+	OBS_MODE_NONE = 0,	// not in spectator mode
+	OBS_MODE_DEATHCAM,	// special mode for death cam animation
+	OBS_MODE_FREEZECAM,	// zooms to a target, and freeze-frames on them
+	OBS_MODE_FIXED,		// view from a fixed camera position
+	OBS_MODE_IN_EYE,	// follow a player in first person view
+	OBS_MODE_CHASE,		// follow a player in third person view
+	OBS_MODE_POI,		// PASSTIME point of interest - game objective, big fight, anything interesting; added in the middle of the enum due to tons of hard-coded "<ROAMING" enum compares
+	OBS_MODE_ROAMING,	// free roaming
 
-//Add Sniper Rifle: Wait for charge
-//Auto Airblast
-//Auto sticky det
-//(NetVar( int*, pBaseWeapon, m_iWeaponState )) = AC_STATE_IDLE;  
+	NUM_OBSERVER_MODES,
+};
+
+//TODO
+//Add Wait for charge
+//Add Auto Airblast
+//Add Auto sticky det
+//SendProxy m_iWeaponState = AC_STATE_IDLE;  
+//Calculate proper projectile velocity with weapon attributes.
+//Methodmap for a target helper
+//Simulate projectile path.
+//Spectator list
+//FOV Aim
+//https://github.com/danielmm8888/TF2Classic/blob/master/src/game/server/player_lagcompensation.cpp#L388
+
+ConVar g_hPredictionQuality;
 
 public Plugin myinfo = 
 {
 	name = "[TF2] Badmin",
 	author = "Pelipoika",
 	description = "",
-	version = "1.0",
+	version = "Propably like 500 by now",
 	url = "http://www.sourcemod.net/plugins.php?author=Pelipoika&search=1"
 };
 
 public void OnPluginStart()
 {
-	RegAdminCmd("sm_hacks", Command_Trigger, ADMFLAG_BAN);
+	RegAdminCmd("sm_hacks", Command_Trigger, ADMFLAG_ROOT);
 	
 	for (int i = 1; i <= MaxClients; i++)
 	{
@@ -66,7 +87,7 @@ public void OnPluginStart()
 		}
 	}
 	
-//	g_hAddition = CreateConVar("sm_triggerbot_extra", "100", "Bye", FCVAR_PROTECTED);
+	g_hPredictionQuality = CreateConVar("sm_triggerbot_prediction_quality", "1.0", "Projectile Aimbot projectile prediction quality");
 	
 	g_hHudInfo = CreateHudSynchronizer();
 	g_hHudShotCounter = CreateHudSynchronizer();
@@ -78,27 +99,72 @@ public void OnPluginStart()
 		g_hHudRadar[i] = CreateHudSynchronizer();
 	}
 	
+	//CTFWeaponBase::PrimaryAttack()
 	g_hPrimaryAttack = DHookCreate(437, HookType_Entity, ReturnType_Void, ThisPointer_CBaseEntity, CTFWeaponBase_PrimaryAttack);
+	
+	//CTFWeaponBaseGun::GetWeaponID()
+	StartPrepSDKCall(SDKCall_Entity);
+	PrepSDKCall_SetVirtual(372);
+	PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);	//Returns WeaponID
+	if ((g_hGetWeaponID = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for GetWeaponID offset!");
+	
+	//CTFWeaponBaseGun::GetProjectileSpeed()
+	StartPrepSDKCall(SDKCall_Entity);
+	PrepSDKCall_SetVirtual(462);
+	PrepSDKCall_SetReturnInfo(SDKType_Float, SDKPass_Plain);	//Returns SPEED
+	if ((g_hGetProjectileSpeed = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for GetProjectileSpeed offset!");
+	
+	//CTFWeaponBaseGun::GetProjectileGravity()
+	StartPrepSDKCall(SDKCall_Entity);
+	PrepSDKCall_SetVirtual(463);
+	PrepSDKCall_SetReturnInfo(SDKType_Float, SDKPass_Plain);	//Returns SPEED
+	if ((g_hGetProjectileGravity = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for GetProjectileGravity offset!");
+	
+	//CTFWeaponBase::GetMaxClip1()
+	StartPrepSDKCall(SDKCall_Entity);
+	PrepSDKCall_SetVirtual(316);
+	PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);	//Returns iMaxClip
+	if ((g_hGetMaxClip = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for CTFWeaponBase::GetMaxClip1 offset!");
+	
+	//-----------------------------------------------------------------------------
+	// Purpose: Returns index number of a given named bone
+	// Input  : name of a bone
+	// Output :	Bone index number or -1 if bone not found
+	//-----------------------------------------------------------------------------
+	//int CBaseAnimating::LookupBone( const char *szName )
+	StartPrepSDKCall(SDKCall_Entity);
+	PrepSDKCall_SetSignature(SDKLibrary_Server, "\x55\x8B\xEC\x56\x8B\xF1\x80\xBE\x41\x03\x00\x00\x00\x75\x2A\x83\xBE\x6C\x04\x00\x00\x00\x75\x2A\xE8\x2A\x2A\x2A\x2A\x85\xC0\x74\x2A\x8B\xCE\xE8\x2A\x2A\x2A\x2A\x8B\x86\x6C\x04\x00\x00\x85\xC0\x74\x2A\x83\x38\x00\x74\x2A\xFF\x75\x08\x50\xE8\x2A\x2A\x2A\x2A\x83\xC4\x08\x5E", 68);
+	PrepSDKCall_AddParameter(SDKType_String, SDKPass_Pointer);
+	PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);
+	if ((g_hLookupBone = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for CBaseAnimating::LookupBone signature!");
+	
+	//void CBaseAnimating::GetBonePosition ( int iBone, Vector &origin, QAngle &angles )
+	StartPrepSDKCall(SDKCall_Entity);
+	PrepSDKCall_SetSignature(SDKLibrary_Server, "\x55\x8B\xEC\x83\xEC\x30\x56\x8B\xF1\x80\xBE\x41\x03\x00\x00\x00", 16);
+	PrepSDKCall_AddParameter(SDKType_PlainOldData, SDKPass_Plain);
+	PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_ByRef, _, VENCODE_FLAG_COPYBACK);
+	PrepSDKCall_AddParameter(SDKType_QAngle, SDKPass_ByRef, _, VENCODE_FLAG_COPYBACK);
+	if ((g_hGetBonePosition = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for CBaseAnimating::GetBonePosition signature!");
+}
+
+int g_iPathLaserModelIndex;
+
+public void OnMapStart()
+{
+	g_iPathLaserModelIndex = PrecacheModel("materials/sprites/laserbeam.vmt");
 }
 
 public void OnClientPutInServer(int client)
 {
-	g_bZoomedOnly[client] = false;
-	g_bIgnoreDeadRinger[client] = true;
-	g_bIgnoreCloaked[client] = true;
-	g_bIgnoreDisguised[client] = false;
-	g_bAutoBackstab[client] = false;
-	g_bWaitForCharge[client] = false;
 	g_bNoSlowDown[client] = false;
 	g_bAllCrits[client] = false;
-	g_bAutoStrafe[client] = false;
-	g_bBhop[client] = false;
 	g_bNoSpread[client] = false;
 	g_bAimbot[client] = false;
 	g_bAutoShoot[client] = false;
 	g_bSilentAim[client] = false;
 	g_bShotCounter[client] = false;
-	g_bWallhack[client] = false;
+	g_bBunnyHop[client] = false;
+	g_bSpectators[client] = false;
 	
 	g_bShot[client] = false;
 	g_iShots[client] = 0;
@@ -111,7 +177,7 @@ public void OnClientPutInServer(int client)
 
 public Action Command_Trigger(int client, int args)
 {
-	if(IsValidClient(client))
+	if(client > 0 && client <= MaxClients && IsClientInGame(client))
 	{
 		DisplayHackMenuAtItem(client);
 	}
@@ -125,6 +191,7 @@ stock void DisplayHackMenuAtItem(int client, int page = 0)
 	menu.SetTitle("Hacker!");
 	menu.AddItem("0", "Aimbot");
 	menu.AddItem("1", "Misc");
+	menu.AddItem("2", "Visuals");
 
 	menu.ExitButton = true;
 	menu.DisplayAt(client, page, MENU_TIME_FOREVER);
@@ -154,6 +221,11 @@ stock void DisplayAimbotMenuAtItem(int client, int page = 0)
 	else
 		menu.AddItem("3", "Silent Aim: Off");
 	
+//	if(g_bAimType[client])
+//		menu.AddItem("4", "Aim Priority: FOV");
+//	else
+//		menu.AddItem("4", "Aim Priority: Closest");
+	
 	menu.ExitButton = true;
 	menu.ExitBackButton = true;
 	menu.DisplayAt(client, page, MENU_TIME_FOREVER);
@@ -174,19 +246,86 @@ stock void DisplayMiscMenuAtItem(int client, int page = 0)
 	else
 		menu.AddItem("1", "Critical Hits: Off");
 	
-	if(g_bShotCounter[client])
-		menu.AddItem("2", "Shot Counter: On");
+	if(g_bBunnyHop[client])
+		menu.AddItem("2", "Bunny Hop: On");
 	else
-		menu.AddItem("2", "Shot Counter: Off");
+		menu.AddItem("2", "Bunny Hop: Off");
+		
+	menu.ExitButton = true;
+	menu.ExitBackButton = true;
+	menu.DisplayAt(client, page, MENU_TIME_FOREVER);
+}
+
+stock void DisplayVisualsMenuAtItem(int client, int page = 0)
+{
+	Menu menu = new Menu(MenuVisualsHandler);
+	menu.SetTitle("Visuals - Settings");
 	
-	if(g_bWallhack[client])
-		menu.AddItem("3", "Wallhack: On");
+	if(g_bShotCounter[client])
+		menu.AddItem("0", "Shot Counter: On");
 	else
-		menu.AddItem("3", "Wallhack: Off");
+		menu.AddItem("0", "Shot Counter: Off");
+	
+	if(g_bSpectators[client])
+		menu.AddItem("1", "Spectator List: On");
+	else
+		menu.AddItem("1", "Spectator List: Off");
 	
 	menu.ExitButton = true;
 	menu.ExitBackButton = true;
 	menu.DisplayAt(client, page, MENU_TIME_FOREVER);
+}
+
+public int MenuVisualsHandler(Menu menu, MenuAction action, int param1, int param2)
+{
+	if (action == MenuAction_Select)
+	{
+		switch(param2)
+		{		
+			case 0:
+			{
+				if(!g_bShotCounter[param1])
+				{
+					int wep = GetPlayerWeaponSlot(param1, TFWeaponSlot_Primary);
+					if(IsValidEntity(wep))
+						DHookEntity(g_hPrimaryAttack, false, wep);	//Abuse the fact that you can't have multiple hooks to the same callback on the same entity.
+					
+					wep = GetPlayerWeaponSlot(param1, TFWeaponSlot_Secondary);
+					if(IsValidEntity(wep))
+						DHookEntity(g_hPrimaryAttack, false, wep);
+					
+					g_bShotCounter[param1] = true;
+				}
+				else
+				{
+					int wep = GetPlayerWeaponSlot(param1, TFWeaponSlot_Primary);
+					if(IsValidEntity(wep))
+						DHookRemoveHookID(DHookEntity(g_hPrimaryAttack, false, wep));
+					
+					wep = GetPlayerWeaponSlot(param1, TFWeaponSlot_Secondary);
+					if(IsValidEntity(wep))
+						DHookRemoveHookID(DHookEntity(g_hPrimaryAttack, false, wep));
+					
+					g_bShotCounter[param1] = false;
+				}
+				
+				g_bShot[param1]     = false;
+				g_iShots[param1]    = 0;
+				g_iShotsHit[param1] = 0;				
+			}
+			case 1: g_bSpectators[param1]  = !g_bSpectators[param1];
+		}
+		
+		DisplayVisualsMenuAtItem(param1, GetMenuSelectionPosition());
+	}
+	else if(param2 == MenuCancel_ExitBack)
+	{
+		DisplayHackMenuAtItem(param1);
+	}
+	else if(action == MenuAction_End)
+	{
+		delete menu;
+	}
 }
 
 public int MenuAimbotHandler(Menu menu, MenuAction action, int param1, int param2)
@@ -195,7 +334,7 @@ public int MenuAimbotHandler(Menu menu, MenuAction action, int param1, int param
 	{
 		switch(param2)
 		{		
-			case 0: g_bAimbot[param1] = !g_bAimbot[param1];
+			case 0: g_bAimbot[param1]    = !g_bAimbot[param1];
 			case 1: g_bAutoShoot[param1] = !g_bAutoShoot[param1];
 			case 2:
 			{
@@ -214,7 +353,7 @@ public int MenuAimbotHandler(Menu menu, MenuAction action, int param1, int param
 					}
 				}
 			}
-			case 3: g_bSilentAim[param1] = !g_bSilentAim[param1];
+			case 3: g_bSilentAim[param1]  = !g_bSilentAim[param1];
 		}
 		
 		DisplayAimbotMenuAtItem(param1, GetMenuSelectionPosition());
@@ -237,38 +376,7 @@ public int MenuMiscHandler(Menu menu, MenuAction action, int param1, int param2)
 		{
 			case 0: g_bNoSlowDown[param1] = !g_bNoSlowDown[param1];
 			case 1: g_bAllCrits[param1]   = !g_bAllCrits[param1];
-			case 2: 
-			{
-				if(!g_bShotCounter[param1])
-				{			
-					int wep = GetPlayerWeaponSlot(param1, TFWeaponSlot_Primary);
-					if(IsValidEntity(wep))
-						DHookEntity(g_hPrimaryAttack, false, wep);
-					
-					wep = GetPlayerWeaponSlot(param1, TFWeaponSlot_Secondary);
-					if(IsValidEntity(wep))
-						DHookEntity(g_hPrimaryAttack, false, wep);
-						
-					g_bShotCounter[param1] = true;
-				}
-				else
-				{
-					int wep = GetPlayerWeaponSlot(param1, TFWeaponSlot_Primary);
-					if(IsValidEntity(wep))
-						DHookRemoveHookID(DHookEntity(g_hPrimaryAttack, false, wep));
-					
-					wep = GetPlayerWeaponSlot(param1, TFWeaponSlot_Secondary);
-					if(IsValidEntity(wep))
-						DHookRemoveHookID(DHookEntity(g_hPrimaryAttack, false, wep));
-					
-					g_bShotCounter[param1] = false;
-				}
-				
-				g_bShot[param1]     = false;
-				g_iShots[param1]    = 0;
-				g_iShotsHit[param1] = 0;				
-			}
-			case 3: g_bWallhack[param1] = !g_bWallhack[param1];
+			case 2: g_bBunnyHop[param1]   = !g_bBunnyHop[param1];
 		}
 		
 		DisplayMiscMenuAtItem(param1, GetMenuSelectionPosition());
@@ -291,6 +399,7 @@ public int MenuLegitnessHandler(Menu menu, MenuAction action, int param1, int pa
 		{
 			case 0: DisplayAimbotMenuAtItem(param1);
 			case 1: DisplayMiscMenuAtItem(param1);
+			case 2: DisplayVisualsMenuAtItem(param1);
 		}
 	}
 	else if(action == MenuAction_End)
@@ -364,14 +473,22 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	{
 		vel[0] = 500.0;
 		
-		if(GetRandomFloat(1.0, 0.0) > 0.005)
+		if(GetRandomFloat(1.0, 0.0) > 0.99)
 		{
-			buttons |= IN_JUMP
+			buttons |= IN_JUMP;
 		}
 	}*/
-
+	
 	if(IsFakeClient(client) || !IsPlayerAlive(client)) 
 		return Plugin_Continue;	
+	
+//	PrintToServer("%i %f", GetEntData(client, 7676), GetEntDataFloat(client, 7676));
+	
+//	PrintCenterText(client, "7688 %f\n7692 %f\n7684 %f", GetEntDataFloat(client, 7688), GetEntDataFloat(client, 7692), GetEntDataFloat(client, 7684));
+	
+//	SetEntPropFloat(client, Prop_Send, "m_flCurrentTauntMoveSpeed", 200.0);
+//	SetEntDataFloat(client, 7684, 200.0, true);
+//	SetEntDataFloat(client, 7676 , 200.0, true);
 	
 	bool bChanged = false;
 	
@@ -386,6 +503,52 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		ShowSyncHudText(client, g_hHudShotCounter, "Shots hit %i/%i [%.0f%%]", iHits, iShots, flHitPerc);
 	}
 	
+	if(g_bSpectators[client])
+	{
+		char strObservers[32 * 64];
+		
+		for (int i = 1; i <= MaxClients; i++)
+		{
+			if(IsClientInGame(i) && TF2_GetClientTeam(i) == TFTeam_Spectator && !IsFakeClient(i))
+			{
+				int iObserved = GetEntPropEnt(i, Prop_Data, "m_hObserverTarget");
+				if(iObserved > 0 && iObserved <= MaxClients && IsClientInGame(iObserved) && iObserved == client)
+				{
+					Format(strObservers, sizeof(strObservers), "%s%N\n", strObservers, i);
+				}
+			}
+		}
+		
+		SetHudTextParams(-1.0, 1.0, 0.1, 255, 255, 255, 0, 0, 0.0, 0.0, 0.0);
+		ShowSyncHudText(client, g_hHudShotCounter, strObservers);
+	}
+	
+	if(g_bBunnyHop[client] || (!(GetEntityFlags(client) & FL_FAKECLIENT) && buttons & IN_JUMP))
+	{
+		if((GetEntityFlags(client) & FL_ONGROUND))
+		{
+			int nOldButtons = GetEntProp(client, Prop_Data, "m_nOldButtons");
+		//	int nButtons    = GetEntProp(client, Prop_Data, "m_nButtons");
+			SetEntProp(client, Prop_Data, "m_nOldButtons", (nOldButtons &= ~(IN_JUMP|IN_DUCK)));
+			
+			int iOffset = FindDataMapInfo(client, "m_nOldButtons");
+			if(iOffset != -1)
+			{
+				ChangeEdictState(client, iOffset);
+				ChangeEdictState(client);
+			}
+		}
+	//	SetEntProp(client, Prop_Data, "m_nButtons",    (nButtons &= ~(IN_DUCK)));
+	//	SetEntProp(client, Prop_Send, "m_bDucked", false);
+	//	SetEntProp(client, Prop_Send, "m_bDucking", false);
+		
+	//	int iFlags = GetEntityFlags(client);
+	//	SetEntityFlags(client, iFlags &= ~(FL_DUCKING | FL_ONGROUND | FL_PARTIALGROUND));
+		
+	//	buttons &= ~IN_DUCK;
+	//	bChanged = true;
+	}
+	
 	if(g_bAimbot[client])
 	{
 		if(g_flNextTime[client] <= GetGameTime())
@@ -396,47 +559,108 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			
 			g_flNextTime[client] = GetGameTime() + UMSG_SPAM_DELAY;
 		}
-			
-		SetEntPropVector(client, Prop_Send, "m_vecPunchAngle",    view_as<float>({0.0, 0.0, 0.0}));
-		SetEntPropVector(client, Prop_Send, "m_vecPunchAngleVel", view_as<float>({0.0, 0.0, 0.0}));
 		
-	//	int iAw = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
-	//	float flNext = GetEntPropFloat(iAw, Prop_Send, "m_flNextPrimaryAttack");
-		
-		bool bCanFire = true; //(flNext <= GetEntProp(client, Prop_Send, "m_nTickBase") * GetTickInterval());
 		if(!(buttons & IN_ATTACK) && !g_bAutoShoot[client])
 			return Plugin_Continue;
+	
+		int iAw = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
+		if(!IsValidEntity(iAw))
+			return Plugin_Continue;
 		
-		int iTarget = FindClosestTarget(client);
+		if(IsPlayerReloading(client))
+			return Plugin_Continue;
 		
+		int iTarget = FindBestTarget(client);
 		if(iTarget != -1)
 		{
-			int iHealer = FindHealer(iTarget);
-			if (iHealer != -1)
-				iTarget = iHealer;
-		
-			SetHudTextParams(0.55, 0.55, 0.1, 0, 255, 0, 0, 0, 0.0, 0.0, 0.0);
-			ShowSyncHudText(client, g_hHudInfo, "[AIMING AT: %N [%i HP]", iTarget, GetEntProp(iTarget, Prop_Send, "m_iHealth"));
-		
 			float myEyePosition[3];
 			GetClientEyePosition(client, myEyePosition);
-			
+		
 			float target_point[3], vNothing[3];
 			int iBone = FindBestHitbox(client, iTarget);
 			if(iBone == -1)
 				return Plugin_Continue;
 			
-			utils_EntityGetBonePosition(iTarget, iBone, target_point, vNothing);
-			target_point[2] += 2.0;
+			GetBonePosition(iTarget, iBone, target_point, vNothing);
+		
+			if(iTarget > 0 && iTarget <= MaxClients)
+			{
+				SetHudTextParams(0.55, 0.55, 0.1, 0, 255, 0, 0, 0, 0.0, 0.0, 0.0);
+				ShowSyncHudText(client, g_hHudInfo, "%N [%i HP]", iTarget, GetEntProp(iTarget, Prop_Data, "m_iHealth"));
+				
+				if(IsProjectileWeapon(iAw))
+				{
+					if(IsExplosiveProjectileWeapon(iAw) && GetEntityFlags(iTarget) & FL_ONGROUND)
+					{
+						GetClientAbsOrigin(iTarget, target_point);
 						
-			float flLatency = GetClientLatency(client, NetFlow_Both);
-			float target_velocity[3];
-			GetEntPropVector(iTarget, Prop_Data, "m_vecAbsVelocity", target_velocity);
+						target_point[2] += 10.0; 
+					}
+					
+					float pred[3]; pred = PredictCorrection(client, iAw, iTarget, myEyePosition, g_hPredictionQuality.IntValue); 
+					
+					AddVectors(target_point, pred, target_point);
+					
+				//	int iWeaponID = SDKCall(g_hGetWeaponID, iAw);
+				//	float flProjectileGravity = GetProjectileGravity(iAw);
+				//	float flProjectileSpeed   = GetProjectileSpeed(iAw);
+					
+				//	PrintCenterText(client, "WeaponID %i\nGravity %f\nSpeed %f", iWeaponID, flProjectileGravity, flProjectileSpeed);
+				}
+				else
+				{
+					float target_velocity[3];
+					GetEntPropVector(iTarget, Prop_Data, "m_vecAbsVelocity", target_velocity);
+					
+					/*
+					#define clamp(a,b,c) ( (a) > (c) ? (c) : ( (a) < (b) ? (b) : (a) ) )
+					
+					#define TIME_TO_TICKS( dt )		( (int)( 0.5f + (float)(dt) / TICK_INTERVAL ) )
+					#define TICKS_TO_TIME( t )		( TICK_INTERVAL *( t ) )
+					#define ROUND_TO_TICKS( t )		( TICK_INTERVAL * TIME_TO_TICKS( t ) )
+					*/
+					
+					// correct is the amout of time we have to correct game time
+					float correct = 0.0;
+					
+					// add network latency
+					correct += GetClientLatency(client, NetFlow_Outgoing);
+					
+					// calc number of view interpolation ticks - 1
+					int lerpTicks = RoundToFloor(0.5 + GetPlayerLerp(client) / GetTickInterval());
+					
+					// add view interpolation latency see C_BaseEntity::GetInterpolationAmount()
+					correct += (GetTickInterval() * lerpTicks);
+					
+					// check bounds [0,sv_maxunlag]
+					float sv_unlag = FindConVar("sv_maxunlag").FloatValue;
+					correct = (correct > sv_unlag ? sv_unlag : (correct < 0.0 ? 0.0 : correct));
+				
+					// correct tick send by player 
+					int targettick = tickcount - lerpTicks;
+					
+					// calc difference between tick send by player and our latency based tick
+					float deltaTime = correct - (GetTickInterval() * (GetGameTickCount() - targettick));
+					
+					if(FloatAbs(deltaTime) > 0.2)
+					{
+						// difference between cmd time and latency is too big > 200ms, use time correction based on latency
+					//	PrintToServer("StartLagCompensation: delta too big (%.3f)\n", deltaTime);
+						targettick = GetGameTickCount() - (RoundToFloor(0.5 + correct / GetTickInterval()));
+					}
+					
+				//	PrintCenterText(client, "correct %f tickcount %i targettick %i deltaTime %f", correct, tickcount, targettick, deltaTime);
+					
+					ScaleVector(target_velocity, correct);
+					SubtractVectors(target_point, target_velocity, target_point);
+				}
+			}
+			else
+			{
+				SetHudTextParams(0.55, 0.55, 0.1, 0, 255, 0, 255, 0, 0.0, 0.0, 0.0);
+				ShowSyncHudText(client, g_hHudInfo, "[%i / %i HP]", GetEntProp(iTarget, Prop_Data, "m_iHealth"), GetEntProp(iTarget, Prop_Data, "m_iMaxHealth"));
+			}
 			
-			target_point[0] -= (target_velocity[0] * flLatency);
-			target_point[1] -= (target_velocity[1] * flLatency);
-			target_point[2] -= (target_velocity[2] * flLatency);
-
 			float eye_to_target[3];
 			SubtractVectors(target_point, myEyePosition, eye_to_target);
 			GetVectorAngles(eye_to_target, eye_to_target);
@@ -447,54 +671,273 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			
 			if(g_bAutoShoot[client])
 			{
-				int iWeapon = GetPlayerWeaponSlot(client, 0);
-				
-				if(IsValidEntity(iWeapon))
-				{
-					//Sniperrifle
-					if(HasEntProp(iWeapon, Prop_Send, "m_flChargedDamage"))
-					{
-						float flDamage = GetEntPropFloat(iWeapon, Prop_Send, "m_flChargedDamage");
-						if (flDamage >= 150.0)
-						{
-							buttons |= IN_ATTACK;
-						}
-					}
-					else //Ambassador
-					{
-						float flLastFireTime = GetGameTime() - GetEntPropFloat(iWeapon, Prop_Send, "m_flLastFireTime");
-						if(flLastFireTime >= 0.95)
-						{
-							buttons |= IN_ATTACK;
-						}
-					}
-				}
-				
-				buttons |= IN_ATTACK;
+				if(IsReadyToFire(iAw))
+					buttons |= IN_ATTACK;
 			}
 			
 			if(!g_bSilentAim[client])
 			{
-				if(bCanFire)
-				{
-					TeleportEntity(client, NULL_VECTOR, eye_to_target, NULL_VECTOR);
-					angles = eye_to_target;
-				}
+				TeleportEntity(client, NULL_VECTOR, eye_to_target, NULL_VECTOR);
 			}
 			else
 			{
-				if(bCanFire)
-				{
-					FixSilentAimMovement(client, vel, angles, eye_to_target);
-					angles = eye_to_target;
-				}
+				FixSilentAimMovement(client, vel, angles, eye_to_target);
 			}
+			
+			angles = eye_to_target;
 			
 			bChanged = true;
 		}
 	}
 	
 	return bChanged ? Plugin_Changed : Plugin_Continue;
+}
+
+stock float[] PredictCorrection(int iClient, int iWeapon, int iTarget, float vecFrom[3], int iQuality)
+{
+	if(!IsValidEntity(iWeapon))
+		return vecFrom;
+		
+	float flSpeed = GetProjectileSpeed(iWeapon);
+	
+	if(flSpeed <= 0.0)
+		return vecFrom;
+		
+	float sv_gravity = GetConVarFloat(FindConVar("sv_gravity"));
+	
+	float flLag = GetPlayerLerp(iClient);
+	
+	bool bOnGround = ((GetEntityFlags(iTarget) & FL_ONGROUND) != 0);
+	
+	float vecWorldGravity[3]; vecWorldGravity[2] = -sv_gravity * (bOnGround ? 0.0 : 1.0) * GetTickInterval() * GetTickInterval();
+	float vecProjGravity[3];  vecProjGravity[2]  = sv_gravity  * GetProjectileGravity(iWeapon) * GetTickInterval() * GetTickInterval();
+	
+	float vecVelocity[3];
+	GetEntPropVector(iTarget, Prop_Data, "m_vecAbsVelocity", vecVelocity);
+//	vecVelocity = view_as<float>( { -0.000010, 239.999984, -160.999984 } );
+	
+	float vecProjVelocity[3]; vecProjVelocity = vecProjGravity;
+	
+	// get the current position
+	// this is not important - any point inside the collideable will work.
+	float vecStepPos[3]
+//	GetEntPropVector(iTarget, Prop_Data, "m_vecOrigin", vecStepPos);
+	GetClientAbsOrigin(iTarget, vecStepPos);
+	
+	float vecMins[3], vecMaxs[3];
+//	GetEntPropVector(iTarget, Prop_Send, "m_vecMins", vecMins);
+//	GetEntPropVector(iTarget, Prop_Send, "m_vecMaxs", vecMaxs);
+	GetClientMins(iTarget, vecMins);
+	GetClientMaxs(iTarget, vecMaxs);
+	
+	// get velocity for a single tick
+	ScaleVector(vecVelocity, GetTickInterval());
+	ScaleVector(vecProjVelocity, GetTickInterval());
+	
+	float vecPredictedPos[3]; vecPredictedPos = vecStepPos;
+	
+	// get the current arival time
+	float vecPredictedProjVel[3]; vecPredictedProjVel = vecProjVelocity; // TODO: rename - this is used for gravity
+	
+	float subtracted[3];
+	SubtractVectors(vecFrom, vecPredictedPos, subtracted);
+	
+	float flArrivalTime = GetVectorLength(subtracted) / (flSpeed) + flLag + GetTickInterval();
+	float vecPredictedVel[3]; vecPredictedVel = vecVelocity;
+	
+	Handle Trace = null;
+	
+	int iSteps = 0;
+	
+	for(float flTravelTime = 0.0; flTravelTime < flArrivalTime; flTravelTime += (GetTickInterval() * iQuality))
+	{	
+		// trace the velocity of the target
+		float vecPredicted[3];
+		AddVectors(vecPredictedPos, vecPredictedVel, vecPredicted);
+		
+		Trace = TR_TraceHullFilterEx(vecPredictedPos, vecPredicted, vecMins, vecMaxs, MASK_PLAYERSOLID, AimTargetFilter, iTarget);
+		
+		if(TR_GetFraction(Trace) != 1.0)
+		{
+			float vecNormal[3];
+			TR_GetPlaneNormal(Trace, vecNormal);
+			
+			PhysicsClipVelocity(vecPredictedVel, vecNormal, vecPredictedVel, 1.0);
+		}
+		
+		float vecTraceEnd[3];
+		TR_GetEndPosition(vecTraceEnd, Trace);
+		
+		vecPredictedPos = vecTraceEnd;
+		
+		delete Trace;
+		vecPredicted = NULL_VECTOR;
+		
+		// trace the gravity of the target
+		AddVectors(vecPredictedPos, vecWorldGravity, vecPredicted);
+		
+		Trace = TR_TraceHullFilterEx(vecPredictedPos, vecPredicted, vecMins, vecMaxs, MASK_PLAYERSOLID, AimTargetFilter, iTarget);
+		
+		// this is important - we predict the world as moving up in order to predict for the projectile moving down
+		AddVectors(vecPredictedVel, vecPredictedProjVel, vecPredictedVel);
+		
+		if(TR_GetFraction(Trace) == 1.0)
+		{
+			bOnGround = false;
+			AddVectors(vecPredictedVel, vecWorldGravity, vecPredictedVel);
+		}
+		else if(!bOnGround)
+		{
+			float surfaceFriction = 1.0;
+		//	gInts->PhysicsSurfaceProps->GetPhysicsProperties(tr.surface.surfaceProps, NULL, NULL, &surfaceFriction, NULL);
+			
+			if(PhysicsApplyFriction(vecPredictedVel, vecPredictedVel, surfaceFriction, GetTickInterval()))
+			{
+				break;
+			}
+		}
+		
+		delete Trace;
+		
+		float temp[3];
+		SubtractVectors(vecFrom, vecPredictedPos, temp);
+		
+		flArrivalTime = GetVectorLength(temp) / (flSpeed) + flLag + GetTickInterval();
+		
+		// if they are moving away too fast then there is no way we can hit them - bail!!
+		if(GetVectorLength(vecPredictedVel) > flSpeed)
+		{
+		//	PrintToChatAll("Target too fast! id = %d", iTarget);
+			break;
+		}
+		
+		iSteps++;
+	}
+	
+//	PrintToServer("Simulation ran for %i steps", iSteps);
+
+//	DrawDebugArrow(vecStepPos, vecPredictedPos, view_as<float>({255, 255, 0, 255}), 0.075);
+
+	float flOut[3];
+	SubtractVectors(vecPredictedPos, vecStepPos, flOut);
+	
+	return flOut;
+}
+
+stock void DrawDebugArrow(float vecFrom[3], float vecTo[3], float color[4], float life = 0.1)
+{
+	float subtracted[3];
+	SubtractVectors(vecTo, vecFrom, subtracted);
+	
+	float angRotation[3];
+	GetVectorAngles(subtracted, angRotation);
+	
+	float vecForward[3], vecRight[3], vecUp[3];
+	GetAngleVectors(angRotation, vecForward, vecRight, vecUp);
+	
+	TE_SetupBeamPoints(vecFrom, vecTo, g_iPathLaserModelIndex, g_iPathLaserModelIndex, 0, 30, life, 2.0, 2.0, 5, 0.0, color, 30);
+	TE_SendToAllInRange(vecFrom, RangeType_Visibility);
+
+	float multi[3];
+	multi[0] = vecRight[0] * 25;
+	multi[1] = vecRight[1] * 25;
+	multi[2] = vecRight[2] * 25;
+
+	float subtr[3];
+	SubtractVectors(vecFrom, multi, subtr);
+	
+	TE_SetupBeamPoints(vecFrom, subtr, g_iPathLaserModelIndex, g_iPathLaserModelIndex, 0, 30, life, 2.0, 5.0, 5, 0.0, view_as<float>({255, 0, 0, 255}), 30);
+	TE_SendToAllInRange(vecFrom, RangeType_Visibility);
+}
+
+void PhysicsClipVelocity(const float input[3], float normal[3], float out[3], float overbounce)
+{
+	float backoff = GetVectorDotProduct(input, normal) * overbounce;
+
+	for(int i = 0; i < 3; ++i)
+	{
+		float change = normal[i] * backoff;
+		out[i] = input[i] - change;
+
+		if(out[i] > -0.1 && out[i] < 0.1)
+			out[i] = 0.0;
+	}
+
+	float adjust = GetVectorDotProduct(out, normal);
+
+	if(adjust < 0.0)
+	{
+		ScaleVector(normal, adjust);
+		
+		SubtractVectors(out, normal, out);
+	//	out -= (normal * adjust);
+	}
+}
+
+bool PhysicsApplyFriction(float input[3], float out[3], float flSurfaceFriction, float flTickRate)
+{
+	float sv_friction = GetConVarFloat(FindConVar("sv_friction"));
+	float sv_stopspeed = GetConVarFloat(FindConVar("sv_stopspeed"));
+
+	float speed = GetVectorLength(input) / flTickRate;
+
+	if(speed < 0.1)
+		return false;
+
+	float drop = 0.0;
+
+	if(flSurfaceFriction != -1.0)
+	{
+		float friction = sv_friction * flSurfaceFriction;
+		float control = (speed < sv_stopspeed) ? sv_stopspeed : speed;
+		drop += control * friction * flTickRate;
+	}
+
+	float newspeed = speed - drop;
+
+	if(newspeed < 0.0)
+		newspeed = 0.0;
+
+	if(newspeed != speed)
+	{
+		newspeed /= speed;
+		
+		out[0] = input[0] * newspeed;
+		out[1] = input[1] * newspeed;
+		out[2] = input[2] * newspeed;
+	}
+
+	out[0] -= input[0] * (1.0 - newspeed);
+	out[1] -= input[1] * (1.0 - newspeed);
+	out[2] -= input[2] * (1.0 - newspeed);
+	
+	out[0] *= flTickRate;
+	out[1] *= flTickRate;
+	out[2] *= flTickRate;
+	
+	return true;
+}
+
+bool IsPlayerReloading(int client)
+{
+	int PlayerWeapon = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
+	
+	if(!IsValidEntity(PlayerWeapon))
+		return false;
+		
+	if (GetPlayerWeaponSlot(client, TFWeaponSlot_Melee) == PlayerWeapon)
+	    return false;
+	
+	int AmmoCur = GetEntProp(PlayerWeapon, Prop_Send, "m_iClip1");
+	int AmmoMax = SDKCall(g_hGetMaxClip, PlayerWeapon);
+	
+	if (AmmoCur == AmmoMax)
+	    return false;
+	
+	if (GetEntPropFloat(PlayerWeapon, Prop_Send, "m_flLastFireTime") > GetEntPropFloat(PlayerWeapon, Prop_Send, "m_flReloadPriorNextFire"))
+	    return false;
+	
+	return true;
 }
 
 stock void EnemyIsAimingAtYou(int client)
@@ -522,7 +965,7 @@ stock void EnemyIsAimingAtYou(int client)
 		float flTheirPos[3];
 		GetClientEyePosition(i, flTheirPos);
 		
-		TR_TraceRayFilter(flMyPos, flTheirPos, MASK_SHOT, RayType_EndPoint, AimTargetFilter, client);
+		TR_TraceRayFilter(flMyPos, flTheirPos, MASK_SHOT|CONTENTS_GRATE, RayType_EndPoint, AimTargetFilter, client);
 		if(TR_DidHit())
 		{
 			int entity = TR_GetEntityIndex();
@@ -602,9 +1045,6 @@ stock void Radar(int client)
 		SetHudTextParams(screenx, screeny, UMSG_SPAM_DELAY + 0.5, 255, 0, 0, 0, 0, 0.0, 0.0, 0.0);
 		ShowSyncHudText(client, g_hHudRadar[i], "⬤");
 	}
-	
-//	SetHudTextParams(-1.0, -1.0, UMSG_SPAM_DELAY + 0.5, 255, 255, 0, 0, 0, 0.0, 0.0, 0.0);
-//	ShowSyncHudText(client, g_hHudRadar[client], "⬤");
 }
 
 stock void GetEnemyPosToScreen(int client, float vecDelta[3], float& xpos, float& ypos, float flRadius)
@@ -675,13 +1115,11 @@ stock void FixSilentAimMovement(int client, float vel[3], float angles[3], float
 	vel[1] = Sine( flYaw ) * flSpeed;
 }
 
+//TODO
+// Sniperrifle & Ambassador check if zoomed and aim to head otherwise aim at body.
 stock int FindBestHitbox(int client, int target)
 {
-	int iNumBones = utils_EntityGetNumBones(target);
-	if(iNumBones < 17)
-		return -1;
-
-	int iBestHitBox = utils_EntityLookupBone(target, "bip_spine_2");
+	int iBestHitBox = LookupBone(target, "bip_spine_2");
 	int iActiveWeapon = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
 	
 	if(TF2_GetPlayerClass(client) == TFClass_Spy
@@ -689,7 +1127,7 @@ stock int FindBestHitbox(int client, int target)
 	{
 		if(iActiveWeapon == GetPlayerWeaponSlot(client, TFWeaponSlot_Primary))
 		{
-			iBestHitBox = utils_EntityLookupBone(target, "bip_head");
+			iBestHitBox = LookupBone(target, "bip_head");
 		}
 	}
 	
@@ -701,17 +1139,27 @@ stock int FindBestHitbox(int client, int target)
 	{
 		iBestHitBox = -1;
 		
-	/*	for (int i = 0; i < 17; i++)
+		for (int i = 0; i < 17; i++)	//Replace with GetNumBones eventually.
 		{
 			if(IsBoneVisible(client, target, i))
 			{
 				iBestHitBox = i;
 				break;
 			}
-		}*/
+		}
 	}
 	
 	return iBestHitBox;
+}
+
+stock int LookupBone(int iEntity, const char[] szName)
+{
+	return SDKCall(g_hLookupBone, iEntity, szName);
+}
+
+stock void GetBonePosition(int iEntity, int iBone, float origin[3], float angles[3])
+{
+	SDKCall(g_hGetBonePosition, iEntity, iBone, origin, angles);
 }
 
 stock bool IsBoneVisible(int looker, int target, int bone)
@@ -720,9 +1168,9 @@ stock bool IsBoneVisible(int looker, int target, int bone)
 	GetClientEyePosition(looker, vecEyePosition);
 
 	float vNothing[3], vOrigin[3];
-	utils_EntityGetBonePosition(target, bone, vOrigin, vNothing);
+	GetBonePosition(target, bone, vOrigin, vNothing);
 	
-	TR_TraceRayFilter(vecEyePosition, vOrigin, MASK_SHOT, RayType_EndPoint, AimTargetFilter, looker);
+	TR_TraceRayFilter(vecEyePosition, vOrigin, MASK_SHOT|CONTENTS_GRATE, RayType_EndPoint, AimTargetFilter, looker);
 	if(TR_DidHit() && TR_GetEntityIndex() == target)
 	{
 		return true;
@@ -740,57 +1188,126 @@ public void TF2_OnConditionAdded(int client, TFCond condition)
 	}
 }
 
-stock bool TF2_IsKillable(int client)
+stock bool TF2_IsKillable(int entity)
 {
-	if(TF2_IsPlayerInCondition(client, TFCond_Ubercharged) 
-	|| TF2_IsPlayerInCondition(client, TFCond_UberchargedHidden) 
-	|| TF2_IsPlayerInCondition(client, TFCond_UberchargedCanteen)
-	|| TF2_IsPlayerInCondition(client, TFCond_Bonked)
-	|| GetEntProp(client, Prop_Data, "m_takedamage") != 2)
+	bool bResult = true;
+
+	if(entity > 0 && entity <= MaxClients)
 	{
-		return false;
+		if(TF2_IsPlayerInCondition(entity, TFCond_Ubercharged) 
+		|| TF2_IsPlayerInCondition(entity, TFCond_UberchargedHidden) 
+		|| TF2_IsPlayerInCondition(entity, TFCond_UberchargedCanteen)
+		|| TF2_IsPlayerInCondition(entity, TFCond_Bonked))
+		{
+			bResult = false;
+		}
 	}
 	
-	return true;
+	if(GetEntProp(entity, Prop_Data, "m_takedamage") != 2)
+	{
+		bResult = false;
+	}
+	
+	return bResult;
 }
 
-stock int FindClosestTarget(int iViewer)
+char strTargetEntities[][] =
 {
-	float flPos[3];
-	GetClientEyePosition(iViewer, flPos);
-	
+	"player",
+	"tank_boss",
+	"headless_hatman",
+	"eyeball_boss",
+	"merasmus",
+	"tf_zombie",
+	"tf_robot_destruction_robot",
+	"obj_sentrygun",
+	"obj_dispenser",
+	"obj_teleporter"
+}
+
+stock int FindBestTarget(int client)
+{
 	float flBestDistance = 99999.0;
 	int iBestTarget = -1;
-
-	for(int i = 1; i <= MaxClients; i++)
+	
+	float flPos[3];
+	GetClientEyePosition(client, flPos);
+	
+	for (int i = 0; i < sizeof(strTargetEntities); i++)
 	{
-		if(i != iViewer && IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) != GetClientTeam(iViewer) && TF2_IsKillable(i))
+		int iEnt = -1;
+		while((iEnt = FindEntityByClassname(iEnt, strTargetEntities[i])) != -1)
 		{
-			int iBone = FindBestHitbox(iViewer, i);
-			if(iBone != -1)
+			int iTarget = iEnt;
+		
+			if(iTarget == client)
+				continue;
+			
+			if(GetEntProp(iTarget, Prop_Send, "m_iTeamNum") == GetClientTeam(client))
+				continue;
+			
+			if(!TF2_IsKillable(iTarget))
+				continue;
+			
+			if(StrEqual(strTargetEntities[i], "player"))
 			{
-				float vOrigin[3], vNothing[3];
-				utils_EntityGetBonePosition(i, iBone, vOrigin, vNothing);
+				if(!IsClientInGame(iEnt))
+					continue;
 				
-				TR_TraceRayFilter(flPos, vOrigin, MASK_SHOT, RayType_EndPoint, AimTargetFilter, iViewer);
-				if(TR_DidHit())
+				if(!IsPlayerAlive(iEnt))
+					continue;
+				
+				int iBone = FindBestHitbox(client, iTarget);
+				if(iBone == -1)
+					continue;
+				
+				int iHealer = FindHealer(iTarget);
+				if(iHealer != -1)
 				{
-					int entity = TR_GetEntityIndex();
-					if(entity == i)
+					iBone = FindBestHitbox(client, iHealer);
+					if(IsBoneVisible(client, iHealer, iBone))
 					{
-						float flDistance = GetVectorDistance(flPos, vOrigin);
+						iTarget = iHealer;
+					}
+				}
 				
-						if(flDistance < flBestDistance)
-						{
-							flBestDistance = flDistance;
-							iBestTarget = i;
-						}
+				if(IsBoneVisible(client, iTarget, iBone))
+				{
+					float flTheirOrigin[3];
+					GetClientAbsOrigin(iTarget, flTheirOrigin);
+					
+					float flDistance = GetVectorDistance(flPos, flTheirOrigin);
+					
+					if(flDistance < flBestDistance)
+					{
+						flBestDistance = flDistance;
+						iBestTarget = iTarget;
+					}
+				}
+			}
+			else
+			{
+				int iBone = FindBestHitbox(client, iTarget);
+				if(iBone == -1)
+					continue;
+				
+				if(IsBoneVisible(client, iTarget, iBone))
+				{
+					float flTheirOrigin[3];
+					GetEntPropVector(iTarget, Prop_Send, "m_vecOrigin", flTheirOrigin);
+					
+					float flDistance = GetVectorDistance(flPos, flTheirOrigin);
+					
+					if(flDistance < flBestDistance)
+					{
+						flBestDistance = flDistance;
+						iBestTarget = iTarget;
 					}
 				}
 			}
 		}
 	}
-
+	
 	return iBestTarget;
 }
 
@@ -809,6 +1326,195 @@ stock int FindHealer(int client)
 	}
 	
 	return -1;
+}
+
+stock bool IsHitScanWeapon(int iWeapon)
+{
+	switch(SDKCall(g_hGetWeaponID, iWeapon))
+	{
+		case TF_WEAPON_SMG:                   return true;
+		case TF_WEAPON_PISTOL:                return true;
+		case TF_WEAPON_MINIGUN:               return true;
+		case TF_WEAPON_REVOLVER:              return true;
+		case TF_WEAPON_SCATTERGUN:            return true;
+		case TF_WEAPON_SNIPERRIFLE:           return true;
+		case TF_WEAPON_SHOTGUN_HWG:           return true;
+		case TF_WEAPON_SODA_POPPER:           return true;
+		case TF_WEAPON_SHOTGUN_PYRO:          return true;
+		case TF_WEAPON_PISTOL_SCOUT:          return true;
+		case TF_WEAPON_SENTRY_BULLET:         return true;
+		case TF_WEAPON_SENTRY_ROCKET:         return true;
+		case TF_WEAPON_SENTRY_REVENGE:        return true;
+		case TF_WEAPON_SHOTGUN_SOLDIER:       return true;
+		case TF_WEAPON_SHOTGUN_PRIMARY:       return true;
+		case TF_WEAPON_HANDGUN_SCOUT_SEC:     return true;
+		case TF_WEAPON_PEP_BRAWLER_BLASTER:   return true;
+		case TF_WEAPON_SNIPERRIFLE_CLASSIC:   return true;
+		case TF_WEAPON_HANDGUN_SCOUT_PRIMARY: return true;
+	}
+	
+	return false;
+}
+
+stock bool IsProjectileWeapon(int iWeapon)
+{
+	switch(SDKCall(g_hGetWeaponID, iWeapon))
+	{
+	//	case TF_WEAPON_BAT_WOOD:                return true;	//Crashes server
+		case TF_WEAPON_SYRINGEGUN_MEDIC:        return true;
+		case TF_WEAPON_ROCKETLAUNCHER:          return true;
+		case TF_WEAPON_GRENADELAUNCHER:         return true;
+		case TF_WEAPON_PIPEBOMBLAUNCHER:        return true;
+		case TF_WEAPON_FLAMETHROWER:            return true;
+		case TF_WEAPON_FLAMETHROWER_ROCKET:     return true;
+		case TF_WEAPON_GRENADE_DEMOMAN:         return true;
+		case TF_WEAPON_SENTRY_ROCKET:           return true;
+		case TF_WEAPON_FLAREGUN:                return true;
+		case TF_WEAPON_COMPOUND_BOW:            return true;
+		case TF_WEAPON_DIRECTHIT:               return true;
+		case TF_WEAPON_CROSSBOW:                return true;
+		case TF_WEAPON_STICKBOMB:               return true;
+		case TF_WEAPON_PARTICLE_CANNON:         return true;
+		case TF_WEAPON_DRG_POMSON:              return true;
+		case TF_WEAPON_BAT_GIFTWRAP:            return true;
+		case TF_WEAPON_GRENADE_ORNAMENT:        return true;
+		case TF_WEAPON_RAYGUN_REVENGE:          return true;
+		case TF_WEAPON_CLEAVER:                 return true;
+		case TF_WEAPON_GRENADE_CLEAVER:         return true;
+		case TF_WEAPON_STICKY_BALL_LAUNCHER:    return true;
+		case TF_WEAPON_GRENADE_STICKY_BALL:     return true;
+		case TF_WEAPON_SHOTGUN_BUILDING_RESCUE: return true;
+		case TF_WEAPON_CANNON:                  return true;
+		case TF_WEAPON_THROWABLE:               return true;
+		case TF_WEAPON_GRENADE_THROWABLE:       return true;
+		case TF_WEAPON_SPELLBOOK:               return true;
+		case TF_WEAPON_GRAPPLINGHOOK:           return true;
+		case TF_WEAPON_PASSTIME_GUN:            return true;
+		case TF_WEAPON_JAR:                     return true;
+		case TF_WEAPON_JAR_MILK:                return true;
+		case TF_WEAPON_RAYGUN:                  return true;
+	}
+	
+	return false;
+}
+
+//Bad name, meant for weapons which you can target teammates with
+stock bool IsTeammateWeapon(int iWeapon)
+{
+	switch(SDKCall(g_hGetWeaponID, iWeapon))
+	{
+		case TF_WEAPON_MEDIGUN:  return true;
+		case TF_WEAPON_CROSSBOW: return true;
+	}
+	
+	return false;
+}
+
+stock bool IsReadyToFire(int iWeapon)
+{
+	switch(SDKCall(g_hGetWeaponID, iWeapon))
+	{
+		case TF_WEAPON_SNIPERRIFLE, TF_WEAPON_SNIPERRIFLE_DECAP:
+		{
+			float flDamage = GetEntPropFloat(iWeapon, Prop_Send, "m_flChargedDamage");
+			if (flDamage < 10.0)
+			{
+				return false;
+			}
+		}
+		case TF_WEAPON_SNIPERRIFLE_CLASSIC:
+		{
+			if(GetEntProp(iWeapon, Prop_Send, "m_bCharging"))
+			{
+				float flDamage = GetEntPropFloat(iWeapon, Prop_Send, "m_flChargedDamage");
+				
+				if (flDamage >= 150.0)
+				{
+					return false;
+				}
+				
+				return true;
+			}
+		}
+		case TF_WEAPON_COMPOUND_BOW:
+		{
+			float flChargeBeginTime = GetEntPropFloat(iWeapon, Prop_Send, "m_flChargeBeginTime");
+			
+			float flCharge = flChargeBeginTime == 0.0 ? 0.0 : GetGameTime() - flChargeBeginTime;
+			
+			if(flCharge > 0.0)
+			{
+				return false;
+			}
+		}
+		case TF_WEAPON_REVOLVER:
+		{
+			float flLastFireTime = GetGameTime() - GetEntPropFloat(iWeapon, Prop_Send, "m_flLastFireTime");
+			
+			if(flLastFireTime < 0.95)
+			{
+				return false;
+			}
+		}
+	}
+	
+	return true;
+}
+
+stock bool IsExplosiveProjectileWeapon(int iWeapon)
+{
+	switch(SDKCall(g_hGetWeaponID, iWeapon))
+	{
+		case TF_WEAPON_PIPEBOMBLAUNCHER: return true;
+		case TF_WEAPON_GRENADELAUNCHER:  return true;
+		case TF_WEAPON_PARTICLE_CANNON:  return true;
+		case TF_WEAPON_ROCKETLAUNCHER:   return true;
+		case TF_WEAPON_DIRECTHIT:        return true;
+		case TF_WEAPON_CANNON:           return true;
+		case TF_WEAPON_JAR:              return true;
+	}
+	
+	return false;
+}
+
+//Always make sure IsProjectileWeapon is true before calling this.
+stock float GetProjectileSpeed(int iWeapon)
+{	
+	float flProjectileSpeed = SDKCall(g_hGetProjectileSpeed, iWeapon);
+	if(flProjectileSpeed == 0.0)
+	{
+		//Some projectiles speeds are hardcoded so we manually return them here.
+		switch(SDKCall(g_hGetWeaponID, iWeapon))
+		{
+			case TF_WEAPON_ROCKETLAUNCHER:   flProjectileSpeed = 1100.0;
+			case TF_WEAPON_DIRECTHIT:        flProjectileSpeed = 1980.0;
+			case TF_WEAPON_FLAREGUN:         flProjectileSpeed = 2000.0;
+			case TF_WEAPON_FLAMETHROWER:     flProjectileSpeed = 1500.0;
+			case TF_WEAPON_SYRINGEGUN_MEDIC: flProjectileSpeed = 990.0;
+		}
+	}
+	
+	return flProjectileSpeed;
+}
+
+stock float GetProjectileGravity(int iWeapon)
+{
+	float flProjectileGravity = SDKCall(g_hGetProjectileGravity, iWeapon);
+	
+	//Wrong.
+	switch(SDKCall(g_hGetWeaponID, iWeapon))
+	{
+		case TF_WEAPON_JAR:                     flProjectileGravity = 50.0;
+		case TF_WEAPON_CANNON:                  flProjectileGravity = 75.0;
+		case TF_WEAPON_FLAREGUN:                flProjectileGravity = 18.5;
+		case TF_WEAPON_CROSSBOW:                flProjectileGravity *= 70.0;
+		case TF_WEAPON_COMPOUND_BOW:            flProjectileGravity *= 65.0;
+		case TF_WEAPON_GRENADELAUNCHER:         flProjectileGravity = 35.0;
+		case TF_WEAPON_SYRINGEGUN_MEDIC:        flProjectileGravity = 15.0;
+		case TF_WEAPON_SHOTGUN_BUILDING_RESCUE: flProjectileGravity *= 70.0;
+	}
+	
+	return flProjectileGravity;
 }
 
 public bool AimTargetFilter(int entity, int contentsMask, any iExclude)
@@ -834,6 +1540,10 @@ public bool AimTargetFilter(int entity, int contentsMask, any iExclude)
 	{
 		return false;
 	}
+	else if(StrContains(class, "tf_projectile_", false) != -1)
+	{
+		return false;
+	}
 	
 	return !(entity == iExclude);
 }
@@ -846,22 +1556,42 @@ stock float AngleNormalize( float angle )
 	return angle;
 }
 
-stock bool IsValidClient(int client)
+stock float GetPlayerLerp(int client)
 {
-	return (client > 0 && client <= MaxClients && IsClientInGame(client));
+	return GetEntPropFloat(client, Prop_Data, "m_fLerpTime");
 }
 
-stock void TE_FireBullets(float vecOrigin[3], float vecAngles0, float vecAngles1, int iWeaponID, int iMode, int iSeed, int iPlayer, float flSpread, bool bCritical = false)
+stock void TE_SendBox(float vMins[3], float vMaxs[3], int color[4])
 {
-	TE_Start("Fire Bullets");
-	TE_WriteVector("m_vecOrigin", vecOrigin);
-	TE_WriteFloat("m_vecAngles[0]", vecAngles0);
-	TE_WriteFloat("m_vecAngles[1]", vecAngles1);
-	TE_WriteNum("m_iWeaponID", iWeaponID);
-	TE_WriteNum("m_iMode", iMode);
-	TE_WriteNum("m_iSeed", iSeed);
-	TE_WriteNum("m_iPlayer", iPlayer);
-	TE_WriteFloat("m_flSpread", flSpread);
-	TE_WriteNum("m_bCritical", bCritical);
+	float vPos1[3], vPos2[3], vPos3[3], vPos4[3], vPos5[3], vPos6[3];
+	vPos1 = vMaxs;
+	vPos1[0] = vMins[0];
+	vPos2 = vMaxs;
+	vPos2[1] = vMins[1];
+	vPos3 = vMaxs;
+	vPos3[2] = vMins[2];
+	vPos4 = vMins;
+	vPos4[0] = vMaxs[0];
+	vPos5 = vMins;
+	vPos5[1] = vMaxs[1];
+	vPos6 = vMins;
+	vPos6[2] = vMaxs[2];
+//	TE_SendBeam(vMaxs, vPos1, color);
+//	TE_SendBeam(vMaxs, vPos2, color);
+	TE_SendBeam(vMaxs, vPos3, color);	//Vertical
+//	TE_SendBeam(vPos6, vPos1, color);
+//	TE_SendBeam(vPos6, vPos2, color);
+	TE_SendBeam(vPos6, vMins, color);	//Vertical
+//	TE_SendBeam(vPos4, vMins, color);
+//	TE_SendBeam(vPos5, vMins, color);
+	TE_SendBeam(vPos5, vPos1, color);	//Vertical
+//	TE_SendBeam(vPos5, vPos3, color);
+//	TE_SendBeam(vPos4, vPos3, color);
+	TE_SendBeam(vPos4, vPos2, color);	//Vertical
+}
+
+stock void TE_SendBeam(const float vMins[3], const float vMaxs[3], const int color[4])
+{
+	TE_SetupBeamPoints(vMins, vMaxs, g_iPathLaserModelIndex, g_iPathLaserModelIndex, 0, 0, 0.075, 1.0, 1.0, 1, 0.0, color, 0);
 	TE_SendToAll();
 }

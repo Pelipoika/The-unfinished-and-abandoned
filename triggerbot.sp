@@ -512,9 +512,11 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			if(IsClientInGame(i) && TF2_GetClientTeam(i) == TFTeam_Spectator && !IsFakeClient(i))
 			{
 				int iObserved = GetEntPropEnt(i, Prop_Data, "m_hObserverTarget");
+				int iObsMode = GetEntProp(i, Prop_Data, "m_iObserverMode");
+				
 				if(iObserved > 0 && iObserved <= MaxClients && IsClientInGame(iObserved) && iObserved == client)
 				{
-					Format(strObservers, sizeof(strObservers), "%s%N\n", strObservers, i);
+					Format(strObservers, sizeof(strObservers), "%s%N%s\n", strObservers, i, iObsMode == OBS_MODE_IN_EYE ? " - IN EYE" : "");
 				}
 			}
 		}
@@ -921,6 +923,10 @@ bool PhysicsApplyFriction(float input[3], float out[3], float flSurfaceFriction,
 bool IsPlayerReloading(int client)
 {
 	int PlayerWeapon = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
+	
+	//Fix for pyro flamethrower aimbot not aiming.	
+	if(TF2_GetPlayerClass(client) == TFClass_Pyro && GetPlayerWeaponSlot(client, 0) == PlayerWeapon)
+		return false;
 	
 	if(!IsValidEntity(PlayerWeapon))
 		return false;

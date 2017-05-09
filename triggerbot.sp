@@ -924,13 +924,13 @@ bool IsPlayerReloading(int client)
 {
 	int PlayerWeapon = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
 	
+	if(!IsValidEntity(PlayerWeapon))
+		return false;
+	
 	//Fix for pyro flamethrower aimbot not aiming.	
 	if(TF2_GetPlayerClass(client) == TFClass_Pyro && GetPlayerWeaponSlot(client, 0) == PlayerWeapon)
 		return false;
 	
-	if(!IsValidEntity(PlayerWeapon))
-		return false;
-		
 	if (GetPlayerWeaponSlot(client, TFWeaponSlot_Melee) == PlayerWeapon)
 	    return false;
 	

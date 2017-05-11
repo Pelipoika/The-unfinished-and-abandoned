@@ -21,6 +21,9 @@ bool g_bShotCounter[MAXPLAYERS + 1];
 bool g_bBunnyHop[MAXPLAYERS + 1];
 bool g_bSpectators[MAXPLAYERS + 1];
 
+int g_iAimType[MAXPLAYERS + 1];
+float g_flAimFOV[MAXPLAYERS + 1];
+
 Handle g_hPrimaryAttack;
 
 Handle g_hGetWeaponID;
@@ -66,10 +69,7 @@ enum{
 //Add Auto sticky det
 //SendProxy m_iWeaponState = AC_STATE_IDLE;  
 //Calculate proper projectile velocity with weapon attributes.
-//Methodmap for a target helper
 //Simulate projectile path to detect early collisions.
-//Spectator list
-//FOV Aim
 //https://github.com/danielmm8888/TF2Classic/blob/master/src/game/server/player_lagcompensation.cpp#L388
 
 ConVar g_hPredictionQuality;
@@ -174,6 +174,9 @@ public void OnClientPutInServer(int client)
 	g_bBunnyHop[client] = false;
 	g_bSpectators[client] = false;
 	
+	g_iAimType[client] = AIM_NEAR;
+	g_flAimFOV[client] = 10.0;
+	
 	g_bShot[client] = false;
 	g_iShots[client] = 0;
 	g_iShotsHit[client] = 0;
@@ -209,30 +212,35 @@ stock void DisplayAimbotMenuAtItem(int client, int page = 0)
 {
 	Menu menu = new Menu(MenuAimbotHandler);
 	menu.SetTitle("Aimbot - Settings");
+	
 	if(g_bAimbot[client])
 		menu.AddItem("0", "Aimbot: On");
 	else
 		menu.AddItem("0", "Aimbot: Off");
 	
+	if(g_iAimType[client] == AIM_NEAR)
+		menu.AddItem("1", "Aim Type: Closest");
+	else if(g_iAimType[client] == AIM_FOV)
+		menu.AddItem("1", "Aim Type: FOV");
+	
+	char FOV[64];
+	Format(FOV, sizeof(FOV), "Aim FOV: %.0f", g_flAimFOV[client]);
+	menu.AddItem("2", FOV);
+
 	if(g_bAutoShoot[client])
-		menu.AddItem("1", "Auto Shoot: On");
+		menu.AddItem("3", "Auto Shoot: On");
 	else
-		menu.AddItem("1", "Auto Shoot: Off");
+		menu.AddItem("3", "Auto Shoot: Off");
 
 	if(g_bNoSpread[client])
-		menu.AddItem("2", "No Spread: On");
+		menu.AddItem("3", "No Spread: On");
 	else
-		menu.AddItem("2", "No Spread: Off");
+		menu.AddItem("3", "No Spread: Off");
 		
 	if(g_bSilentAim[client])
 		menu.AddItem("3", "Silent Aim: On");
 	else
 		menu.AddItem("3", "Silent Aim: Off");
-	
-//	if(g_bAimType[client])
-//		menu.AddItem("4", "Aim Priority: FOV");
-//	else
-//		menu.AddItem("4", "Aim Priority: Closest");
 	
 	menu.ExitButton = true;
 	menu.ExitBackButton = true;
@@ -343,8 +351,16 @@ public int MenuAimbotHandler(Menu menu, MenuAction action, int param1, int param
 		switch(param2)
 		{		
 			case 0: g_bAimbot[param1]    = !g_bAimbot[param1];
-			case 1: g_bAutoShoot[param1] = !g_bAutoShoot[param1];
-			case 2:
+			case 1: 
+			{
+				if(g_iAimType[param1] == AIM_NEAR)
+					g_iAimType[param1] = AIM_FOV;
+				else if(g_iAimType[param1] == AIM_FOV)
+					g_iAimType[param1] = AIM_NEAR;
+			}
+			case 2: PrintCenterText(param1, "Hi");	//TODO Make do thing.
+			case 3: g_bAutoShoot[param1] = !g_bAutoShoot[param1];
+			case 4:
 			{
 				g_bNoSpread[param1] = !g_bNoSpread[param1];
 			
@@ -361,7 +377,7 @@ public int MenuAimbotHandler(Menu menu, MenuAction action, int param1, int param
 					}
 				}
 			}
-			case 3: g_bSilentAim[param1]  = !g_bSilentAim[param1];
+			case 5: g_bSilentAim[param1]  = !g_bSilentAim[param1];
 		}
 		
 		DisplayAimbotMenuAtItem(param1, GetMenuSelectionPosition());
@@ -611,14 +627,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 					}
 					
 					float pred[3]; pred = PredictCorrection(client, iAw, iTarget, myEyePosition, g_hPredictionQuality.IntValue); 
-					
-					//Why can't i just fucking != NULL_VECTOR this...
-					if(pred[0] != 0.0 
-					&& pred[1] != 0.0
-					&& pred[2] != 0.0)
-					{
-						AddVectors(target_point, pred, target_point);
-					}
+					AddVectors(target_point, pred, target_point);
 					
 				//	int iWeaponID = SDKCall(g_hGetWeaponID, iAw);
 				//	float flProjectileGravity = GetProjectileGravity(iAw);
@@ -827,7 +836,7 @@ stock float[] PredictCorrection(int iClient, int iWeapon, int iTarget, float vec
 		if(GetVectorLength(vecPredictedVel) > flSpeed)
 		{
 		//	PrintToChatAll("Target too fast! id = %d", iTarget);
-			return NULL_VECTOR;
+			break;
 		}
 		
 		iSteps++;
@@ -1124,6 +1133,16 @@ stock float Min(float one, float two)
 	return two;
 }
 
+stock float Max(float one, float two)
+{
+	if(one > two)
+		return one;
+	else if(two > one)
+		return two;
+		
+	return two;
+}
+
 stock void FixSilentAimMovement(int client, float vel[3], float angles[3], float aimbotAngles[3])
 {
 	float vecSilent[3];
@@ -1148,7 +1167,7 @@ stock int FindBestHitbox(int client, int target)
 	if(iActiveWeapon == GetPlayerWeaponSlot(client, TFWeaponSlot_Primary))
 	{
 		//If they're a sniper and zoomed in or a spy..
-		if((TF2_IsPlayerInCondition(client, TFCond_Zoomed) && playerClass == TFClass_Sniper)
+		if (((TF2_IsPlayerInCondition(client, TFCond_Zoomed) || SDKCall(g_hGetWeaponID, iActiveWeapon) == TF_WEAPON_COMPOUND_BOW) && playerClass == TFClass_Sniper)
 		|| playerClass == TFClass_Spy)
 		{
 			//Aim at head
@@ -1195,8 +1214,44 @@ stock bool IsBoneVisible(int looker, int target, int bone)
 	float vNothing[3], vOrigin[3];
 	GetBonePosition(target, bone, vOrigin, vNothing);
 	
+	if(g_iAimType[looker] == AIM_FOV && target > 0 && target <= MaxClients)
+	{
+		float vEyeAngles[3];
+		GetClientEyeAngles(looker, vEyeAngles);
+		
+		float vTEyeAngles[3];
+		GetClientEyeAngles(target, vTEyeAngles);
+		
+		float vTargetAngles[3];
+		
+		// Get the angle needed to aim at the enemy
+		SubtractVectors(vecEyePosition, vOrigin, vTargetAngles);
+		
+		float flFov = angleFOV(vEyeAngles, vecEyePosition, vOrigin);
+		
+		return (flFov <= g_flAimFOV[looker]) && IsPointVisible(looker, target, vecEyePosition, vOrigin);
+	}
+	
 	return IsPointVisible(looker, target, vecEyePosition, vOrigin);
 }
+
+float angleFOV(float angle[3], float src[3], float dest[3])
+{
+	float f[3];
+	float d[3];
+	
+	GetAngleVectors(angle, f, NULL_VECTOR, NULL_VECTOR);
+	
+	SubtractVectors(dest, src, d);
+	NormalizeVector(d, d);
+	
+	return Max(angleBetween(f, d), 0.0);
+}
+
+float angleBetween(float f[3], float v[3])
+{
+	return RadToDeg(ArcCosine(GetVectorDotProduct(f, v)));
+}  
 
 stock bool IsPointVisible(int looker, int target, float start[3], float point[3])
 {

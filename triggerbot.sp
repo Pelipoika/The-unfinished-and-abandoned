@@ -52,6 +52,14 @@ enum {
 	NUM_OBSERVER_MODES,
 };
 
+//Aimbot modes
+enum{
+	AIM_NEAR = 0,
+	AIM_FOV,
+	
+	NUM_AIM_MODES,
+}
+
 //TODO
 //Add Wait for charge
 //Add Auto Airblast
@@ -59,7 +67,7 @@ enum {
 //SendProxy m_iWeaponState = AC_STATE_IDLE;  
 //Calculate proper projectile velocity with weapon attributes.
 //Methodmap for a target helper
-//Simulate projectile path.
+//Simulate projectile path to detect early collisions.
 //Spectator list
 //FOV Aim
 //https://github.com/danielmm8888/TF2Classic/blob/master/src/game/server/player_lagcompensation.cpp#L388
@@ -482,14 +490,6 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	if(IsFakeClient(client) || !IsPlayerAlive(client)) 
 		return Plugin_Continue;	
 	
-//	PrintToServer("%i %f", GetEntData(client, 7676), GetEntDataFloat(client, 7676));
-	
-//	PrintCenterText(client, "7688 %f\n7692 %f\n7684 %f", GetEntDataFloat(client, 7688), GetEntDataFloat(client, 7692), GetEntDataFloat(client, 7684));
-	
-//	SetEntPropFloat(client, Prop_Send, "m_flCurrentTauntMoveSpeed", 200.0);
-//	SetEntDataFloat(client, 7684, 200.0, true);
-//	SetEntDataFloat(client, 7676 , 200.0, true);
-	
 	bool bChanged = false;
 	
 	if(g_bShotCounter[client])
@@ -594,14 +594,31 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				{
 					if(IsExplosiveProjectileWeapon(iAw) && GetEntityFlags(iTarget) & FL_ONGROUND)
 					{
-						GetClientAbsOrigin(iTarget, target_point);
+						//Can we see the "feet"?
+						float vecEyePosition[3];
+						GetClientEyePosition(client, vecEyePosition);
 						
-						target_point[2] += 10.0; 
+						float vOrigin[3];
+						GetClientAbsOrigin(iTarget, vOrigin);
+						
+						vOrigin[2] += 5.0;
+						
+						TR_TraceRayFilter(vecEyePosition, vOrigin, MASK_SHOT|CONTENTS_GRATE, RayType_EndPoint, WorldOnly, client);
+						if(!TR_DidHit())
+						{
+							target_point = vOrigin;
+						}
 					}
 					
 					float pred[3]; pred = PredictCorrection(client, iAw, iTarget, myEyePosition, g_hPredictionQuality.IntValue); 
 					
-					AddVectors(target_point, pred, target_point);
+					//Why can't i just fucking != NULL_VECTOR this...
+					if(pred[0] != 0.0 
+					&& pred[1] != 0.0
+					&& pred[2] != 0.0)
+					{
+						AddVectors(target_point, pred, target_point);
+					}
 					
 				//	int iWeaponID = SDKCall(g_hGetWeaponID, iAw);
 				//	float flProjectileGravity = GetProjectileGravity(iAw);
@@ -626,7 +643,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 					float correct = 0.0;
 					
 					// add network latency
-					correct += GetClientLatency(client, NetFlow_Outgoing);
+					correct += GetClientLatency(client, NetFlow_Outgoing) * 2;
 					
 					// calc number of view interpolation ticks - 1
 					int lerpTicks = RoundToFloor(0.5 + GetPlayerLerp(client) / GetTickInterval());
@@ -752,7 +769,7 @@ stock float[] PredictCorrection(int iClient, int iWeapon, int iTarget, float vec
 	int iSteps = 0;
 	
 	for(float flTravelTime = 0.0; flTravelTime < flArrivalTime; flTravelTime += (GetTickInterval() * iQuality))
-	{	
+	{
 		// trace the velocity of the target
 		float vecPredicted[3];
 		AddVectors(vecPredictedPos, vecPredictedVel, vecPredicted);
@@ -810,7 +827,7 @@ stock float[] PredictCorrection(int iClient, int iWeapon, int iTarget, float vec
 		if(GetVectorLength(vecPredictedVel) > flSpeed)
 		{
 		//	PrintToChatAll("Target too fast! id = %d", iTarget);
-			break;
+			return NULL_VECTOR;
 		}
 		
 		iSteps++;
@@ -1121,18 +1138,20 @@ stock void FixSilentAimMovement(int client, float vel[3], float angles[3], float
 	vel[1] = Sine( flYaw ) * flSpeed;
 }
 
-//TODO
-// Sniperrifle & Ambassador check if zoomed and aim to head otherwise aim at body.
 stock int FindBestHitbox(int client, int target)
 {
 	int iBestHitBox = LookupBone(target, "bip_spine_2");
 	int iActiveWeapon = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
 	
-	if(TF2_GetPlayerClass(client) == TFClass_Spy
-	|| TF2_GetPlayerClass(client) == TFClass_Sniper)
+	TFClassType playerClass = TF2_GetPlayerClass(client);
+	
+	if(iActiveWeapon == GetPlayerWeaponSlot(client, TFWeaponSlot_Primary))
 	{
-		if(iActiveWeapon == GetPlayerWeaponSlot(client, TFWeaponSlot_Primary))
+		//If they're a sniper and zoomed in or a spy..
+		if((TF2_IsPlayerInCondition(client, TFCond_Zoomed) && playerClass == TFClass_Sniper)
+		|| playerClass == TFClass_Spy)
 		{
+			//Aim at head
 			iBestHitBox = LookupBone(target, "bip_head");
 		}
 	}
@@ -1176,7 +1195,12 @@ stock bool IsBoneVisible(int looker, int target, int bone)
 	float vNothing[3], vOrigin[3];
 	GetBonePosition(target, bone, vOrigin, vNothing);
 	
-	TR_TraceRayFilter(vecEyePosition, vOrigin, MASK_SHOT|CONTENTS_GRATE, RayType_EndPoint, AimTargetFilter, looker);
+	return IsPointVisible(looker, target, vecEyePosition, vOrigin);
+}
+
+stock bool IsPointVisible(int looker, int target, float start[3], float point[3])
+{
+	TR_TraceRayFilter(start, point, MASK_SHOT|CONTENTS_GRATE, RayType_EndPoint, AimTargetFilter, looker);
 	if(TR_DidHit() && TR_GetEntityIndex() == target)
 	{
 		return true;
@@ -1536,6 +1560,30 @@ public bool AimTargetFilter(int entity, int contentsMask, any iExclude)
 		}
 	}
 	else if(StrEqual(class, "entity_medigun_shield"))
+	{
+		if(GetEntProp(entity, Prop_Send, "m_iTeamNum") == GetClientTeam(iExclude))
+		{
+			return false;
+		}
+	}
+	else if(StrEqual(class, "func_respawnroomvisualizer"))
+	{
+		return false;
+	}
+	else if(StrContains(class, "tf_projectile_", false) != -1)
+	{
+		return false;
+	}
+	
+	return !(entity == iExclude);
+}
+
+public bool WorldOnly(int entity, int contentsMask, any iExclude)
+{
+	char class[64];
+	GetEntityClassname(entity, class, sizeof(class));
+	
+	if(StrEqual(class, "entity_medigun_shield"))
 	{
 		if(GetEntProp(entity, Prop_Send, "m_iTeamNum") == GetClientTeam(iExclude))
 		{

@@ -34,7 +34,7 @@ Handle g_hStopParticleEffects;
 
 public void OnPluginStart()
 {
-	RegAdminCmd("addparticle",     Command_AddParticle,    ADMFLAG_BAN, "");
+	RegAdminCmd("addparticle",     Command_AddParticle,    ADMFLAG_BAN, "<particle ex. \"ghost_pumpkin\"> <attachtype 0 - 6> <attachment name ex. \"head\"> <reset particles 1 or 0> <OPTIONAL entity to attach particle to>");
 	RegAdminCmd("removeparticles", Command_RemoveParticle, ADMFLAG_BAN, "Remove all particles");
 	
 	RegAdminCmd("addattribute",    Command_Add,    ADMFLAG_BAN, "addattribute <attribute> <value> <duration>");
@@ -82,6 +82,21 @@ public void OnPluginStart()
 	PrepSDKCall_AddParameter(SDKType_String, SDKPass_Pointer);
 	PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);	//Returns address of CEconItemAttributeDefinition
 	if ((g_hGetAttributeDefinitionByName = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for CEconItemSchema::GetAttributeDefinitionByName signature!"); 		
+	
+/*	int itemOffset = FindSendPropInfo("CTFWeaponBase", "m_Item");
+	if (itemOffset == -1)
+		ThrowError("Failed to find m_Item on CTFWeaponBase");
+
+	///////////////
+	int iEnt = GetEntPropEnt(1, Prop_Data, "m_hActiveWeapon");
+	
+	Address ptrCEIV = GetEntityAddress(iEnt) + view_as<Address>(itemOffset);
+    
+	PrintToServer("wat %x %i", ptrCEIV, GetEntPropArraySize(iEnt, Prop_Send, "m_Attributes"));
+	
+	PrintToServer("player m_iAmmo %x", GetEntityAddress(1) + view_as<Address>(FindSendPropInfo("CTFPlayer", "m_Shared")));*/
+	
+	LoadTranslations("common.phrases");
 }
 
 public Action Command_AddParticle(int client, int args)
@@ -102,7 +117,7 @@ public Action Command_AddParticle(int client, int args)
 	int iEntity = StringToInt(strEntity);
 	
 	DispatchParticleEffect(pszParticleName, iAttachType, iEntity == 0 ? client : iEntity, pszAttachmentName, bResetAllParticlesOnEntity);
-	ReplyToCommand(client, "Dispatched particle \"%s\" with attachment type \"%i\" on attachment \"%s\" with bResetAllParticlesOnEntity as \"%i\"", pszParticleName, iAttachType, pszAttachmentName, bResetAllParticlesOnEntity);
+	ReplyToCommand(client, "Dispatched particle \"%s\" with attachment type \"%i\" on attachment \"%s\" with bResetAllParticlesOnEntity as \"%i\" on entity %i", pszParticleName, iAttachType, pszAttachmentName, bResetAllParticlesOnEntity, iEntity == 0 ? client : iEntity);
 	
 	return Plugin_Handled;
 }
@@ -123,17 +138,17 @@ public Action Command_Add(int client, int args)
 	if(!(client > 0 && client <= MaxClients && IsClientInGame(client)))
 		return Plugin_Handled;
 	
-	if(args < 2)
+	if(args < 3)
 	{
-		ReplyToCommand(client, "Usage: addattribute <attribute> <value> <duration>");
+		ReplyToCommand(client, "Usage: addattribute <player / #userid> <attribute> <value> <duration>");
 		return Plugin_Handled;	
 	}
 	
-	char strAttrib[64], strDuration[8], strValue[8];
-	
-	GetCmdArg(1, strAttrib,   sizeof(strAttrib));
-	GetCmdArg(2, strValue,    sizeof(strValue));
-	GetCmdArg(3, strDuration, sizeof(strDuration));
+	char strTarget[32], strAttrib[64], strDuration[8], strValue[8];
+	GetCmdArg(1, strTarget, sizeof(strTarget));
+	GetCmdArg(2, strAttrib,   sizeof(strAttrib));
+	GetCmdArg(3, strValue,    sizeof(strValue));
+	GetCmdArg(4, strDuration, sizeof(strDuration));
 	
 	float flDuration = StringToFloat(strDuration);
 	float flValue    = StringToFloat(strValue);
@@ -144,9 +159,35 @@ public Action Command_Add(int client, int args)
 		return Plugin_Handled;	
 	}
 	
-	TF2_AddAttribute(client, strAttrib, flValue, flDuration);
-	ReplyToCommand(client, "Added attribute \"%s\" with value \"%.2f\" for \"%.2f\" seconds", strAttrib, flValue, flDuration);
-	
+	char target_name[MAX_TARGET_LENGTH];
+	int target_list[MAXPLAYERS];
+	int	target_count;
+	bool tn_is_ml;
+	if ((target_count = ProcessTargetString(
+			strTarget,
+			client, 
+			target_list, 
+			MAXPLAYERS, 
+			0,
+			target_name,
+			sizeof(target_name),
+			tn_is_ml)) <= 0)
+	{
+		ReplyToTargetError(client, target_count);
+		return Plugin_Handled;
+	}
+
+	for (int i = 0; i < target_count; i++)
+	{
+		int player = target_list[i];
+		
+		if(player > 0 && player <= MaxClients && IsClientInGame(player) && IsPlayerAlive(player))
+		{
+			TF2_AddAttribute(player, strAttrib, flValue, flDuration);
+			ReplyToCommand(client, "Added attribute \"%s\" with value \"%.2f\" for \"%.2f\" seconds on %N", strAttrib, flValue, flDuration, player);
+		}
+	}
+		
 	return Plugin_Handled;
 }
 

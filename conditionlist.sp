@@ -197,7 +197,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	else
 		iObserved = client;
 
-	for (int cond = 0; cond <= view_as<int>(TFCond_SpawnOutline); ++cond)
+	for (int cond = 0; cond <= 119; ++cond)
 	{
 		if (!TF2_IsPlayerInCondition(iObserved, view_as<TFCond>(cond)))
 			continue;

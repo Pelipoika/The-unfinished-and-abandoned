@@ -195,15 +195,15 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 //	PrintCenterText(client, "%f", val);
 	
 	char strConds[2000];
-	SetHudTextParams(1.0, 0.05, 0.1, 255, 255, 0, 0, 0, 0.0, 0.0, 0.0);
+	SetHudTextParams(0.0, 0.3, 0.1, 255, 255, 0, 0, 0, 0.0, 0.0, 0.0);
 	
 	int iObserved = GetEntPropEnt(client, Prop_Send, "m_hObserverTarget");
 	if(iObserved > 0 && iObserved <= MaxClients && IsClientInGame(iObserved) && TF2_GetClientTeam(client) == TFTeam_Spectator)
 		Format(strConds, sizeof(strConds), "Conditions on %N\n", iObserved);
 	else
 		iObserved = client;
-
-	for (int cond = 0; cond <= 119; ++cond)
+	
+	for (int cond = 0; cond <= aConditions.Length; ++cond)
 	{
 		if (!TF2_IsPlayerInCondition(iObserved, view_as<TFCond>(cond)))
 			continue;

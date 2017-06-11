@@ -104,20 +104,50 @@ public Action Command_AddParticle(int client, int args)
 	if(!(client > 0 && client <= MaxClients && IsClientInGame(client)))
 		return Plugin_Handled;
 	
-	char pszParticleName[PLATFORM_MAX_PATH], strAttachType[8], pszAttachmentName[PLATFORM_MAX_PATH], strResetParticles[8], strEntity[8];
+	if(args < 4)
+	{
+		ReplyToCommand(client, "Usage: addparticle <player / #userid> <particle ex. \"ghost_pumpkin\"> <attachtype 0 - 6> <attachment name ex. \"head\"> <reset particles 1 or 0>");
+		return Plugin_Handled;	
+	}
 	
-	GetCmdArg(1, pszParticleName,   sizeof(pszParticleName));
-	GetCmdArg(2, strAttachType,     sizeof(strAttachType));
-	GetCmdArg(3, pszAttachmentName, sizeof(pszAttachmentName));
-	GetCmdArg(4, strResetParticles, sizeof(strResetParticles));
-	GetCmdArg(5, strEntity,         sizeof(strEntity));
+	char strTarget[32], pszParticleName[PLATFORM_MAX_PATH], strAttachType[8], pszAttachmentName[PLATFORM_MAX_PATH], strResetParticles[8], strEntity[8];
+	GetCmdArg(1, strTarget,         sizeof(strTarget));
+	GetCmdArg(2, pszParticleName,   sizeof(pszParticleName));
+	GetCmdArg(3, strAttachType,     sizeof(strAttachType));
+	GetCmdArg(4, pszAttachmentName, sizeof(pszAttachmentName));
+	GetCmdArg(5, strResetParticles, sizeof(strResetParticles));
+	GetCmdArg(6, strEntity,         sizeof(strEntity));
 	
 	bool bResetAllParticlesOnEntity = !!StringToInt(strResetParticles);
 	ParticleAttachment iAttachType  = view_as<ParticleAttachment>(StringToInt(strAttachType));
 	int iEntity = StringToInt(strEntity);
 	
-	DispatchParticleEffect(pszParticleName, iAttachType, iEntity == 0 ? client : iEntity, pszAttachmentName, bResetAllParticlesOnEntity);
-	ReplyToCommand(client, "Dispatched particle \"%s\" with attachment type \"%i\" on attachment \"%s\" with bResetAllParticlesOnEntity as \"%i\" on entity %i", pszParticleName, iAttachType, pszAttachmentName, bResetAllParticlesOnEntity, iEntity == 0 ? client : iEntity);
+	char target_name[MAX_TARGET_LENGTH];
+	int target_list[MAXPLAYERS];
+	int	target_count;
+	bool tn_is_ml;
+	if ((target_count = ProcessTargetString(
+			strTarget,
+			client, 
+			target_list, 
+			MAXPLAYERS, 
+			0,
+			target_name,
+			sizeof(target_name),
+			tn_is_ml)) <= 0)
+	{
+		ReplyToTargetError(client, target_count);
+		return Plugin_Handled;
+	}
+
+	for (int i = 0; i < target_count; i++)
+	{
+		int player = target_list[i];	
+		
+		DispatchParticleEffect(pszParticleName, iAttachType, iEntity == 0 ? player : iEntity, pszAttachmentName, bResetAllParticlesOnEntity);
+		ReplyToCommand(client, "Dispatched particle \"%s\" with attachment type \"%i\" on attachment \"%s\" with bResetAllParticlesOnEntity as \"%i\" on entity %i", pszParticleName, iAttachType, pszAttachmentName, bResetAllParticlesOnEntity, iEntity == 0 ? client : iEntity);
+		LogAction(client, player, "%N Dispatched particle \"%s\" with attachment type \"%i\" on attachment \"%s\" with bResetAllParticlesOnEntity as \"%i\" on entity %i", client, pszParticleName, iAttachType, pszAttachmentName, bResetAllParticlesOnEntity, iEntity == 0 ? client : iEntity);
+	}
 	
 	return Plugin_Handled;
 }
@@ -185,6 +215,7 @@ public Action Command_Add(int client, int args)
 		{
 			TF2_AddAttribute(player, strAttrib, flValue, flDuration);
 			ReplyToCommand(client, "Added attribute \"%s\" with value \"%.2f\" for \"%.2f\" seconds on %N", strAttrib, flValue, flDuration, player);
+			LogAction(client, player, "%N Added attribute \"%s\" with value \"%.2f\" for \"%.2f\" seconds on %N", client, strAttrib, flValue, flDuration, player);
 		}
 	}
 		

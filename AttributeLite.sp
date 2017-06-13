@@ -31,14 +31,17 @@ Handle g_hGetAttributeDefinitionByName;
 
 Handle g_hDispatchParticleEffect;
 Handle g_hStopParticleEffects;
+Handle g_hAddItem;
 
 public void OnPluginStart()
 {
-	RegAdminCmd("addparticle",     Command_AddParticle,    ADMFLAG_BAN, "<particle ex. \"ghost_pumpkin\"> <attachtype 0 - 6> <attachment name ex. \"head\"> <reset particles 1 or 0> <OPTIONAL entity to attach particle to>");
+	RegAdminCmd("addparticle",     Command_AddParticle,    ADMFLAG_BAN, "<player / #userid> <particle ex. \"ghost_pumpkin\"> <attachtype 0 - 6> <attachment name ex. \"head\"> <reset particles 1 or 0> <OPTIONAL entity to attach particle to>");
 	RegAdminCmd("removeparticles", Command_RemoveParticle, ADMFLAG_BAN, "Remove all particles");
 	
-	RegAdminCmd("addattribute",    Command_Add,    ADMFLAG_BAN, "addattribute <attribute> <value> <duration>");
-	RegAdminCmd("removeattribute", Command_Remove, ADMFLAG_BAN, "removeattribute <attribute>");
+	RegAdminCmd("additem",         Command_AddItem,        ADMFLAG_BAN, "<player / #userid> <hat ex. \"The U-clank-a\">");
+	
+	RegAdminCmd("addattribute",    Command_Add,            ADMFLAG_BAN, "addattribute <player / #userid> <attribute> <value> <duration>");
+	RegAdminCmd("removeattribute", Command_Remove,         ADMFLAG_BAN, "removeattribute <attribute>");
 	
 	//DispatchParticleEffect(const char *pszParticleName, ParticleAttachment_t iAttachType, CBaseEntity *pEntity, const char *pszAttachmentName, bool bResetAllParticlesOnEntity)
 	StartPrepSDKCall(SDKCall_Static);
@@ -70,6 +73,13 @@ public void OnPluginStart()
 	PrepSDKCall_AddParameter(SDKType_String, SDKPass_Pointer);	//strAttribute
 	if ((g_hRemoveCustomAttribute = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for CTFPlayer::RemoveCustomAttribute signature!"); 
 	
+	//CTFPlayer::AddItem(const char* hatname) returns CEconItemSelectionCriteria for some reason(?)
+	StartPrepSDKCall(SDKCall_Player);
+	PrepSDKCall_SetSignature(SDKLibrary_Server, "\x55\x8B\xEC\x83\xEC\x54\x56\x8B\xF1\x8D\x4D\xAC", 12);
+	PrepSDKCall_AddParameter(SDKType_String, SDKPass_Pointer);	//strHat
+	PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);
+	if ((g_hAddItem = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for CTFPlayer::AddItem signature!"); 
+	
 	//GetItemSchema()
 	StartPrepSDKCall(SDKCall_Static);
 	PrepSDKCall_SetSignature(SDKLibrary_Server, "\xE8\x2A\x2A\x2A\x2A\x83\xC0\x04\xC3", 9);
@@ -83,20 +93,51 @@ public void OnPluginStart()
 	PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);	//Returns address of CEconItemAttributeDefinition
 	if ((g_hGetAttributeDefinitionByName = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for CEconItemSchema::GetAttributeDefinitionByName signature!"); 		
 	
-/*	int itemOffset = FindSendPropInfo("CTFWeaponBase", "m_Item");
-	if (itemOffset == -1)
-		ThrowError("Failed to find m_Item on CTFWeaponBase");
-
-	///////////////
-	int iEnt = GetEntPropEnt(1, Prop_Data, "m_hActiveWeapon");
-	
-	Address ptrCEIV = GetEntityAddress(iEnt) + view_as<Address>(itemOffset);
-    
-	PrintToServer("wat %x %i", ptrCEIV, GetEntPropArraySize(iEnt, Prop_Send, "m_Attributes"));
-	
-	PrintToServer("player m_iAmmo %x", GetEntityAddress(1) + view_as<Address>(FindSendPropInfo("CTFPlayer", "m_Shared")));*/
-	
 	LoadTranslations("common.phrases");
+}
+
+public Action Command_AddItem(int client, int args)
+{
+	if(!(client > 0 && client <= MaxClients && IsClientInGame(client)))
+		return Plugin_Handled;
+	
+	if(args < 1)
+	{
+		ReplyToCommand(client, "Usage: addhat <player / #userid> <hat ex. \"The U-clank-a\">");
+		return Plugin_Handled;	
+	}
+	
+	char strTarget[32], strHat[PLATFORM_MAX_PATH];
+	GetCmdArg(1, strTarget, sizeof(strTarget));
+	GetCmdArg(2, strHat,    sizeof(strHat));
+	
+	char target_name[MAX_TARGET_LENGTH];
+	int target_list[MAXPLAYERS];
+	int	target_count;
+	bool tn_is_ml;
+	if ((target_count = ProcessTargetString(
+			strTarget,
+			client, 
+			target_list, 
+			MAXPLAYERS, 
+			0,
+			target_name,
+			sizeof(target_name),
+			tn_is_ml)) <= 0)
+	{
+		ReplyToTargetError(client, target_count);
+		return Plugin_Handled;
+	}
+
+	for (int i = 0; i < target_count; i++)
+	{
+		int player = target_list[i];	
+		
+		AddItem(player, strHat);
+		ReplyToCommand(client, "Giving item \"%s\" to player \"%N\"\n", strHat, player);
+	}
+	
+	return Plugin_Handled;
 }
 
 public Action Command_AddParticle(int client, int args)
@@ -175,7 +216,7 @@ public Action Command_Add(int client, int args)
 	}
 	
 	char strTarget[32], strAttrib[64], strDuration[8], strValue[8];
-	GetCmdArg(1, strTarget, sizeof(strTarget));
+	GetCmdArg(1, strTarget,   sizeof(strTarget));
 	GetCmdArg(2, strAttrib,   sizeof(strAttrib));
 	GetCmdArg(3, strValue,    sizeof(strValue));
 	GetCmdArg(4, strDuration, sizeof(strDuration));
@@ -246,6 +287,11 @@ public Action Command_Remove(int client, int args)
 	ReplyToCommand(client, "Removed attribute \"%s\"", strAttrib);
 	
 	return Plugin_Handled;
+}
+
+void AddItem(int client, const char[] strHatName)
+{
+	SDKCall(g_hAddItem, client, strHatName);
 }
 
 void DispatchParticleEffect(const char[] pszParticleName, ParticleAttachment iAttachType, int pEntity, const char[] pszAttachmentName, bool bResetAllParticlesOnEntity)

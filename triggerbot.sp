@@ -17,6 +17,7 @@ bool g_bNoSpread[MAXPLAYERS + 1];
 bool g_bAimbot[MAXPLAYERS + 1];
 bool g_bAutoShoot[MAXPLAYERS + 1];
 bool g_bSilentAim[MAXPLAYERS + 1];
+bool g_bTeammates[MAXPLAYERS + 1];
 bool g_bShotCounter[MAXPLAYERS + 1];
 bool g_bBunnyHop[MAXPLAYERS + 1];
 bool g_bSpectators[MAXPLAYERS + 1];
@@ -71,6 +72,8 @@ enum{
 //Calculate proper projectile velocity with weapon attributes.
 //Simulate projectile path to detect early collisions.
 //https://github.com/danielmm8888/TF2Classic/blob/master/src/game/server/player_lagcompensation.cpp#L388
+//https://www.unknowncheats.me/forum/1502192-post9.html
+//Use "real angles" not "silent aim angles" for aimbot
 
 ConVar g_hPredictionQuality;
 
@@ -82,6 +85,26 @@ public Plugin myinfo =
 	version = "Propably like 500 by now",
 	url = "http://www.sourcemod.net/plugins.php?author=Pelipoika&search=1"
 };
+
+/*
+public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
+{
+    if(!(GetEntityFlags(client) & FL_ONGROUND))
+    {
+		if(mouse[0] > 0)
+		{
+			vel[1] = 450.0;
+			buttons |= IN_MOVERIGHT;
+		}
+ 
+		else if(mouse[0] < 0)
+		{
+			vel[1] = -450.0;
+			buttons |= IN_MOVELEFT;
+		}
+	}
+}
+*/
 
 public void OnPluginStart()
 {
@@ -170,6 +193,7 @@ public void OnClientPutInServer(int client)
 	g_bAimbot[client] = false;
 	g_bAutoShoot[client] = false;
 	g_bSilentAim[client] = false;
+	g_bTeammates[client] = false;
 	g_bShotCounter[client] = false;
 	g_bBunnyHop[client] = false;
 	g_bSpectators[client] = false;
@@ -241,6 +265,11 @@ stock void DisplayAimbotMenuAtItem(int client, int page = 0)
 		menu.AddItem("3", "Silent Aim: On");
 	else
 		menu.AddItem("3", "Silent Aim: Off");
+	
+	if(g_bTeammates[client])
+		menu.AddItem("4", "Aim at teammates: On");
+	else
+		menu.AddItem("4", "Aim at teammates: Off");
 	
 	menu.ExitButton = true;
 	menu.ExitBackButton = true;
@@ -378,6 +407,7 @@ public int MenuAimbotHandler(Menu menu, MenuAction action, int param1, int param
 				}
 			}
 			case 5: g_bSilentAim[param1]  = !g_bSilentAim[param1];
+			case 6: g_bTeammates[param1]  = !g_bTeammates[param1];
 		}
 		
 		DisplayAimbotMenuAtItem(param1, GetMenuSelectionPosition());
@@ -540,31 +570,14 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		SetHudTextParams(-1.0, 1.0, 0.1, 255, 255, 255, 0, 0, 0.0, 0.0, 0.0);
 		ShowSyncHudText(client, g_hHudShotCounter, strObservers);
 	}
-	
+
 	if(g_bBunnyHop[client] || (!(GetEntityFlags(client) & FL_FAKECLIENT) && buttons & IN_JUMP))
 	{
 		if((GetEntityFlags(client) & FL_ONGROUND))
 		{
 			int nOldButtons = GetEntProp(client, Prop_Data, "m_nOldButtons");
-		//	int nButtons    = GetEntProp(client, Prop_Data, "m_nButtons");
 			SetEntProp(client, Prop_Data, "m_nOldButtons", (nOldButtons &= ~(IN_JUMP|IN_DUCK)));
-			
-			int iOffset = FindDataMapInfo(client, "m_nOldButtons");
-			if(iOffset != -1)
-			{
-				ChangeEdictState(client, iOffset);
-				ChangeEdictState(client);
-			}
 		}
-	//	SetEntProp(client, Prop_Data, "m_nButtons",    (nButtons &= ~(IN_DUCK)));
-	//	SetEntProp(client, Prop_Send, "m_bDucked", false);
-	//	SetEntProp(client, Prop_Send, "m_bDucking", false);
-		
-	//	int iFlags = GetEntityFlags(client);
-	//	SetEntityFlags(client, iFlags &= ~(FL_DUCKING | FL_ONGROUND | FL_PARTIALGROUND));
-		
-	//	buttons &= ~IN_DUCK;
-	//	bChanged = true;
 	}
 	
 	if(g_bAimbot[client])
@@ -584,7 +597,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		int iAw = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
 		if(!IsValidEntity(iAw))
 			return Plugin_Continue;
-		
+
 		if(IsPlayerReloading(client))
 			return Plugin_Continue;
 		
@@ -652,7 +665,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 					float correct = 0.0;
 					
 					// add network latency
-					correct += GetClientLatency(client, NetFlow_Outgoing) * 2;
+					correct += GetClientLatency(client, NetFlow_Outgoing);
 					
 					// calc number of view interpolation ticks - 1
 					int lerpTicks = RoundToFloor(0.5 + GetPlayerLerp(client) / GetTickInterval());
@@ -957,6 +970,11 @@ bool IsPlayerReloading(int client)
 	if(TF2_GetPlayerClass(client) == TFClass_Pyro && GetPlayerWeaponSlot(client, 0) == PlayerWeapon)
 		return false;
 	
+	//Wrangler doesn't reload
+	if(SDKCall(g_hGetWeaponID, PlayerWeapon) == TF_WEAPON_LASER_POINTER)
+		return false;
+	
+	//Melee weapons don't reload
 	if (GetPlayerWeaponSlot(client, TFWeaponSlot_Melee) == PlayerWeapon)
 	    return false;
 	
@@ -1107,6 +1125,11 @@ stock void GetEnemyPosToScreen(int client, float vecDelta[3], float& xpos, float
 	// Rotate it around the circle
 	xpos = (500 + (flRadius * Cosine(yawRadians))) / 1000.0; // divide by 1000 to make it fit with HudTextParams
 	ypos = (500 - (flRadius * Sine(yawRadians)))   / 1000.0;
+}
+
+stock int GetMaxHealth(int client)
+{
+	return GetEntProp(GetPlayerResourceEntity(), Prop_Send, "m_iMaxHealth", _, client);
 }
 
 stock float[] GetDeltaVector(const int client, const int target)
@@ -1317,8 +1340,50 @@ stock int FindBestTarget(int client)
 	
 	float flPos[3];
 	GetClientEyePosition(client, flPos);
-	
-	for (int i = 0; i < sizeof(strTargetEntities); i++)
+
+	if(g_bTeammates[client])
+	{
+		int iLowestHP = 999999;
+		for (int i = 1; i <= MaxClients; i++)
+		{
+			if(i == client)
+				continue;
+			
+			if(!IsClientInGame(i))
+				continue;
+			
+			if(!IsPlayerAlive(i))
+				continue;
+			
+			if(GetEntProp(i, Prop_Send, "m_iTeamNum") != GetClientTeam(client))
+				continue;
+			
+			if(!TF2_IsKillable(i))
+				continue;
+			
+			int iBone = FindBestHitbox(client, i);
+			if(iBone == -1)
+				continue;
+			
+			if(IsBoneVisible(client, i, iBone))
+			{
+				int iMaxHealth = GetMaxHealth(i);
+				int iHealth = GetEntProp(i, Prop_Data, "m_iHealth");
+				
+			//	PrintToServer("%N %i / %i", i, iMaxHealth, iHealth);
+				
+				if(iHealth < iMaxHealth && iHealth < iLowestHP)
+				{
+					iLowestHP = iHealth;
+					iBestTarget = i;
+				}
+			}
+		}
+		
+		return iBestTarget;
+	}
+
+	for (int i = 0; i < ((g_bTeammates[client]) ? 1 : sizeof(strTargetEntities)); i++)
 	{
 		int iEnt = -1;
 		while((iEnt = FindEntityByClassname(iEnt, strTargetEntities[i])) != -1)
@@ -1328,7 +1393,7 @@ stock int FindBestTarget(int client)
 			if(iTarget == client)
 				continue;
 			
-			if(GetEntProp(iTarget, Prop_Send, "m_iTeamNum") == GetClientTeam(client))
+			if(GetEntProp(iTarget, Prop_Send, "m_iTeamNum") == GetClientTeam(client) && !g_bTeammates[client])
 				continue;
 			
 			if(!TF2_IsKillable(iTarget))
@@ -1609,7 +1674,7 @@ public bool AimTargetFilter(int entity, int contentsMask, any iExclude)
 	
 	if(StrEqual(class, "player"))
 	{
-		if(GetClientTeam(entity) == GetClientTeam(iExclude))
+		if(GetClientTeam(entity) == GetClientTeam(iExclude) && !g_bTeammates[iExclude])
 		{
 			return false;
 		}

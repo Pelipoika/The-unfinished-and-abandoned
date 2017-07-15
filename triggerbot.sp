@@ -523,7 +523,7 @@ public void DidHit(int userid)
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
-	if(IsFakeClient(client))
+/*	if(IsFakeClient(client))
 	{
 		vel[0] = 500.0;
 		
@@ -531,7 +531,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		{
 			buttons |= IN_JUMP;
 		}
-	}
+	}*/
 	
 	if(IsFakeClient(client) || !IsPlayerAlive(client)) 
 		return Plugin_Continue;	
@@ -584,7 +584,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	{
 		if(g_flNextTime[client] <= GetGameTime())
 		{
-			Radar(client);
+			Radar(client, angles);
 		
 			EnemyIsAimingAtYou(client);
 			
@@ -601,21 +601,19 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		if(IsPlayerReloading(client))
 			return Plugin_Continue;
 		
-		int iTarget = FindBestTarget(client);
+		int iTarget = FindBestTarget(client, angles);
 		if(iTarget != -1)
 		{
 			float myEyePosition[3];
 			GetClientEyePosition(client, myEyePosition);
 		
 			float target_point[3], vNothing[3];
-			int iBone = FindBestHitbox(client, iTarget);
+			int iBone = FindBestHitbox(client, angles, iTarget);
 			if(iBone == -1)
 				return Plugin_Continue;
 			
 			GetBonePosition(iTarget, iBone, target_point, vNothing);
-			
-			target_point[2] += 5.0;
-		
+					
 			if(iTarget > 0 && iTarget <= MaxClients)
 			{
 				SetHudTextParams(0.55, 0.55, 0.1, 0, 255, 0, 0, 0, 0.0, 0.0, 0.0);
@@ -625,33 +623,23 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				{
 					if(IsExplosiveProjectileWeapon(iAw) && GetEntityFlags(iTarget) & FL_ONGROUND)
 					{
-						//Can we see the "feet"?
-						float vecEyePosition[3];
-						GetClientEyePosition(client, vecEyePosition);
-						
-						float vOrigin[3];
-						GetClientAbsOrigin(iTarget, vOrigin);
-						
-						vOrigin[2] += 5.0;
-						
-						TR_TraceRayFilter(vecEyePosition, vOrigin, MASK_SHOT|CONTENTS_GRATE, RayType_EndPoint, WorldOnly, client);
-						if(!TR_DidHit())
-						{
-							target_point = vOrigin;
-						}
+						//Aim at feet if on ground.
+						GetClientAbsOrigin(iTarget, target_point);
 					}
 					
 					float pred[3]; pred = PredictCorrection(client, iAw, iTarget, myEyePosition, g_hPredictionQuality.IntValue); 
 					AddVectors(target_point, pred, target_point);
 					
-				//	int iWeaponID = SDKCall(g_hGetWeaponID, iAw);
-				//	float flProjectileGravity = GetProjectileGravity(iAw);
-				//	float flProjectileSpeed   = GetProjectileSpeed(iAw);
+					int iWeaponID = SDKCall(g_hGetWeaponID, iAw);
+					float flProjectileGravity = GetProjectileGravity(iAw);
+					float flProjectileSpeed   = GetProjectileSpeed(iAw);
 					
-				//	PrintCenterText(client, "WeaponID %i\nGravity %f\nSpeed %f", iWeaponID, flProjectileGravity, flProjectileSpeed);
+					PrintCenterText(client, "WeaponID %i\nGravity %f\nSpeed %f", iWeaponID, flProjectileGravity, flProjectileSpeed);
 				}
 				else
 				{
+					target_point[2] += 5.0;		
+				
 					float target_velocity[3];
 					GetEntPropVector(iTarget, Prop_Data, "m_vecAbsVelocity", target_velocity);
 					
@@ -760,7 +748,7 @@ stock float[] PredictCorrection(int iClient, int iWeapon, int iTarget, float vec
 	if(flSpeed <= 0.0)
 		return vecFrom;
 		
-	float sv_gravity = GetConVarFloat(FindConVar("sv_gravity"));
+	float sv_gravity = GetConVarFloat(FindConVar("sv_gravity")) * PlayerGravityMod(iClient);
 	
 	float flLag = GetPlayerLerp(iClient);
 	
@@ -778,12 +766,9 @@ stock float[] PredictCorrection(int iClient, int iWeapon, int iTarget, float vec
 	// get the current position
 	// this is not important - any point inside the collideable will work.
 	float vecStepPos[3]
-//	GetEntPropVector(iTarget, Prop_Data, "m_vecOrigin", vecStepPos);
 	GetClientAbsOrigin(iTarget, vecStepPos);
 	
 	float vecMins[3], vecMaxs[3];
-//	GetEntPropVector(iTarget, Prop_Send, "m_vecMins", vecMins);
-//	GetEntPropVector(iTarget, Prop_Send, "m_vecMaxs", vecMaxs);
 	GetClientMins(iTarget, vecMins);
 	GetClientMaxs(iTarget, vecMaxs);
 	
@@ -879,6 +864,14 @@ stock float[] PredictCorrection(int iClient, int iWeapon, int iTarget, float vec
 	SubtractVectors(vecPredictedPos, vecStepPos, flOut);
 	
 	return flOut;
+}
+
+stock float PlayerGravityMod(int client)
+{
+	if(TF2_IsPlayerInCondition(client, TFCond_Parachute))
+		return 0.448;
+		
+	return 1.0;
 }
 
 stock void DrawDebugArrow(float vecFrom[3], float vecTo[3], float color[4], float life = 0.1)
@@ -1077,7 +1070,7 @@ stock void EnemyIsAimingAtYou(int client)
 	}
 }
 
-stock void Radar(int client)
+stock void Radar(int client, float playerAngles[3])
 {
 	float flMyPos[3];
 	GetClientAbsOrigin(client, flMyPos);
@@ -1106,20 +1099,17 @@ stock void Radar(int client)
 		
 		vecGrenDelta = GetDeltaVector(client, i);
 		NormalizeVector(vecGrenDelta, vecGrenDelta);
-		GetEnemyPosToScreen(client, vecGrenDelta, screenx, screeny, GetVectorDistance(flMyPos, flEnemyPos) * 0.25);
+		GetEnemyPosToScreen(client, playerAngles, vecGrenDelta, screenx, screeny, GetVectorDistance(flMyPos, flEnemyPos) * 0.25);
 		
 		SetHudTextParams(screenx, screeny, UMSG_SPAM_DELAY + 0.5, 255, 0, 0, 0, 0, 0.0, 0.0, 0.0);
 		ShowSyncHudText(client, g_hHudRadar[i], "⬤");
 	}
 }
 
-stock void GetEnemyPosToScreen(int client, float vecDelta[3], float& xpos, float& ypos, float flRadius)
+stock void GetEnemyPosToScreen(int client, float playerAngles[3], float vecDelta[3], float& xpos, float& ypos, float flRadius)
 {
 	if(flRadius > 400.0)
 		flRadius = 400.0;
-
-	float playerAngles[3]; 
-	GetClientEyeAngles(client, playerAngles);
 
 	float vecforward[3], right[3], up[3] = { 0.0, 0.0, 1.0 };
 	GetAngleVectors(playerAngles, vecforward, NULL_VECTOR, NULL_VECTOR );
@@ -1196,7 +1186,7 @@ stock void FixSilentAimMovement(int client, float vel[3], float angles[3], float
 	vel[1] = Sine( flYaw ) * flSpeed;
 }
 
-stock int FindBestHitbox(int client, int target)
+stock int FindBestHitbox(int client, float playerEyeAngles[3], int target)
 {
 	int iBestHitBox = LookupBone(target, "bip_spine_2");
 	int iActiveWeapon = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
@@ -1214,7 +1204,7 @@ stock int FindBestHitbox(int client, int target)
 		}
 	}
 	
-	if(iBestHitBox != -1 && IsBoneVisible(client, target, iBestHitBox))
+	if(iBestHitBox != -1 && IsBoneVisible(client, playerEyeAngles, target, iBestHitBox))
 	{
 		return iBestHitBox;
 	}
@@ -1224,7 +1214,7 @@ stock int FindBestHitbox(int client, int target)
 		
 		for (int i = 0; i < 17; i++)	//Replace with GetNumBones eventually.
 		{
-			if(IsBoneVisible(client, target, i))
+			if(IsBoneVisible(client, playerEyeAngles, target, i))
 			{
 				iBestHitBox = i;
 				break;
@@ -1245,19 +1235,16 @@ stock void GetBonePosition(int iEntity, int iBone, float origin[3], float angles
 	SDKCall(g_hGetBonePosition, iEntity, iBone, origin, angles);
 }
 
-stock bool IsBoneVisible(int looker, int target, int bone)
+stock bool IsBoneVisible(int player, float playerEyeAngles[3], int target, int bone)
 {
 	float vecEyePosition[3];
-	GetClientEyePosition(looker, vecEyePosition);
+	GetClientEyePosition(player, vecEyePosition);
 
 	float vNothing[3], vOrigin[3];
 	GetBonePosition(target, bone, vOrigin, vNothing);
 	
-	if(g_iAimType[looker] == AIM_FOV && target > 0 && target <= MaxClients)
+	if(g_iAimType[player] == AIM_FOV && target > 0 && target <= MaxClients)
 	{
-		float vEyeAngles[3];
-		GetClientEyeAngles(looker, vEyeAngles);
-		
 		float vTEyeAngles[3];
 		GetClientEyeAngles(target, vTEyeAngles);
 		
@@ -1266,12 +1253,12 @@ stock bool IsBoneVisible(int looker, int target, int bone)
 		// Get the angle needed to aim at the enemy
 		SubtractVectors(vecEyePosition, vOrigin, vTargetAngles);
 		
-		float flFov = angleFOV(vEyeAngles, vecEyePosition, vOrigin);
+		float flFov = angleFOV(playerEyeAngles, vecEyePosition, vOrigin);
 		
-		return (flFov <= g_flAimFOV[looker]) && IsPointVisible(looker, target, vecEyePosition, vOrigin);
+		return (flFov <= g_flAimFOV[player]) && IsPointVisible(player, target, vecEyePosition, vOrigin);
 	}
 	
-	return IsPointVisible(looker, target, vecEyePosition, vOrigin);
+	return IsPointVisible(player, target, vecEyePosition, vOrigin);
 }
 
 float angleFOV(float angle[3], float src[3], float dest[3])
@@ -1349,7 +1336,7 @@ char strTargetEntities[][] =
 	"obj_teleporter"
 }
 
-stock int FindBestTarget(int client)
+stock int FindBestTarget(int client, float playerEyeAngles[3])
 {
 	float flBestDistance = 99999.0;
 	int iBestTarget = -1;
@@ -1377,11 +1364,11 @@ stock int FindBestTarget(int client)
 			if(!TF2_IsKillable(i))
 				continue;
 			
-			int iBone = FindBestHitbox(client, i);
+			int iBone = FindBestHitbox(client, playerEyeAngles, i);
 			if(iBone == -1)
 				continue;
 			
-			if(IsBoneVisible(client, i, iBone))
+			if(IsBoneVisible(client, playerEyeAngles, i, iBone))
 			{
 				int iMaxHealth = GetMaxHealth(i);
 				int iHealth = GetEntProp(i, Prop_Data, "m_iHealth");
@@ -1423,21 +1410,21 @@ stock int FindBestTarget(int client)
 				if(!IsPlayerAlive(iEnt))
 					continue;
 				
-				int iBone = FindBestHitbox(client, iTarget);
+				int iBone = FindBestHitbox(client, playerEyeAngles, iTarget);
 				if(iBone == -1)
 					continue;
 				
 				int iHealer = FindHealer(iTarget);
 				if(iHealer != -1)
 				{
-					iBone = FindBestHitbox(client, iHealer);
-					if(IsBoneVisible(client, iHealer, iBone))
+					iBone = FindBestHitbox(client, playerEyeAngles, iHealer);
+					if(IsBoneVisible(client, playerEyeAngles, iHealer, iBone))
 					{
 						iTarget = iHealer;
 					}
 				}
 				
-				if(IsBoneVisible(client, iTarget, iBone))
+				if(IsBoneVisible(client, playerEyeAngles, iTarget, iBone))
 				{
 					float flTheirOrigin[3];
 					GetClientAbsOrigin(iTarget, flTheirOrigin);
@@ -1453,11 +1440,11 @@ stock int FindBestTarget(int client)
 			}
 			else
 			{
-				int iBone = FindBestHitbox(client, iTarget);
+				int iBone = FindBestHitbox(client, playerEyeAngles, iTarget);
 				if(iBone == -1)
 					continue;
 				
-				if(IsBoneVisible(client, iTarget, iBone))
+				if(IsBoneVisible(client, playerEyeAngles, iTarget, iBone))
 				{
 					float flTheirOrigin[3];
 					GetEntPropVector(iTarget, Prop_Send, "m_vecOrigin", flTheirOrigin);
@@ -1655,6 +1642,7 @@ stock float GetProjectileSpeed(int iWeapon)
 			case TF_WEAPON_ROCKETLAUNCHER:   flProjectileSpeed = 1100.0;
 			case TF_WEAPON_DIRECTHIT:        flProjectileSpeed = 1980.0;
 			case TF_WEAPON_FLAREGUN:         flProjectileSpeed = 2000.0;
+			case TF_WEAPON_RAYGUN_REVENGE:   flProjectileSpeed = 2000.0; //Manmelter
 			case TF_WEAPON_FLAMETHROWER:     flProjectileSpeed = 1500.0;
 			case TF_WEAPON_SYRINGEGUN_MEDIC: flProjectileSpeed = 990.0;
 		}
@@ -1673,9 +1661,10 @@ stock float GetProjectileGravity(int iWeapon)
 		case TF_WEAPON_JAR:                     flProjectileGravity = 50.0;
 		case TF_WEAPON_CANNON:                  flProjectileGravity = 75.0;
 		case TF_WEAPON_FLAREGUN:                flProjectileGravity = 18.5;
-		case TF_WEAPON_CROSSBOW:                flProjectileGravity *= 70.0;
+		case TF_WEAPON_RAYGUN_REVENGE:          flProjectileGravity = 12.5; //Manmelter
+		case TF_WEAPON_CROSSBOW:                flProjectileGravity *= 65.0;
 		case TF_WEAPON_COMPOUND_BOW:            flProjectileGravity *= 65.0;
-		case TF_WEAPON_GRENADELAUNCHER:         flProjectileGravity = 35.0;
+		case TF_WEAPON_GRENADELAUNCHER:         flProjectileGravity = 50.0;
 		case TF_WEAPON_SYRINGEGUN_MEDIC:        flProjectileGravity = 15.0;
 		case TF_WEAPON_SHOTGUN_BUILDING_RESCUE: flProjectileGravity *= 70.0;
 	}

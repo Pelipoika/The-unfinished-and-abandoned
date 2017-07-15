@@ -523,7 +523,7 @@ public void DidHit(int userid)
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
-/*	if(IsFakeClient(client))
+	if(IsFakeClient(client))
 	{
 		vel[0] = 500.0;
 		
@@ -531,7 +531,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		{
 			buttons |= IN_JUMP;
 		}
-	}*/
+	}
 	
 	if(IsFakeClient(client) || !IsPlayerAlive(client)) 
 		return Plugin_Continue;	
@@ -613,6 +613,8 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				return Plugin_Continue;
 			
 			GetBonePosition(iTarget, iBone, target_point, vNothing);
+			
+			target_point[2] += 5.0;
 		
 			if(iTarget > 0 && iTarget <= MaxClients)
 			{
@@ -653,6 +655,29 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 					float target_velocity[3];
 					GetEntPropVector(iTarget, Prop_Data, "m_vecAbsVelocity", target_velocity);
 					
+					//Predict "localplayer"
+					float player_velocity[3];
+					GetEntPropVector(client, Prop_Data, "m_vecAbsVelocity", player_velocity);
+					
+					float delta[3];
+					
+					delta[0] = player_velocity[0] * (1 / 66);
+					delta[1] = player_velocity[1] * (1 / 66);
+					delta[2] = player_velocity[2] * (1 / 66);
+					
+					myEyePosition[0] = myEyePosition[0] + delta[0];
+					myEyePosition[1] = myEyePosition[1] + delta[1];
+					myEyePosition[2] = myEyePosition[2] + delta[2];
+					
+					//Predict target
+					delta[0] = target_velocity[0] * (1 / 66);
+					delta[1] = target_velocity[1] * (1 / 66);
+					delta[2] = target_velocity[2] * (1 / 66);
+					
+					target_point[0] = target_point[0] - delta[0];
+					target_point[1] = target_point[1] - delta[1];
+					target_point[2] = target_point[2] - delta[2];
+					
 					/*
 					#define clamp(a,b,c) ( (a) > (c) ? (c) : ( (a) < (b) ? (b) : (a) ) )
 					
@@ -681,6 +706,10 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 					
 					ScaleVector(target_velocity, correct);
 					SubtractVectors(target_point, target_velocity, target_point);
+					
+					float vecPunch[3];
+					GetEntPropVector(client, Prop_Send, "m_vecPunchAngle", vecPunch);
+					AddVectors(target_point, vecPunch, target_point);
 				}
 			}
 			else

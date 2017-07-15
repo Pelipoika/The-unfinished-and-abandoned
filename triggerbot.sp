@@ -677,20 +677,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 					float sv_unlag = FindConVar("sv_maxunlag").FloatValue;
 					correct = (correct > sv_unlag ? sv_unlag : (correct < 0.0 ? 0.0 : correct));
 				
-					// correct tick send by player 
-					int targettick = tickcount - lerpTicks;
-					
-					// calc difference between tick send by player and our latency based tick
-					float deltaTime = correct - (GetTickInterval() * (GetGameTickCount() - targettick));
-					
-					if(FloatAbs(deltaTime) > 0.2)
-					{
-						// difference between cmd time and latency is too big > 200ms, use time correction based on latency
-					//	PrintToServer("StartLagCompensation: delta too big (%.3f)\n", deltaTime);
-						targettick = GetGameTickCount() - (RoundToFloor(0.5 + correct / GetTickInterval()));
-					}
-					
-				//	PrintCenterText(client, "correct %f tickcount %i targettick %i deltaTime %f", correct, tickcount, targettick, deltaTime);
+			//		PrintCenterText(client, "correct %f tickcount %i", correct, tickcount);
 					
 					ScaleVector(target_velocity, correct);
 					SubtractVectors(target_point, target_velocity, target_point);

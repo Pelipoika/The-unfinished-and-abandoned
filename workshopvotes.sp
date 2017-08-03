@@ -18,9 +18,6 @@ public Plugin myinfo =
 };
 
 //TODO Add NEW to new maps
- 
-//SetEntityFlags(iClient, GetEntityFlags(iClient) | FL_FAKECLIENT);
-//SetEntityFlags(iClient, GetEntityFlags(iCient) &= ~FL_FAKECLIENT);
 
 public void OnPluginStart()
 {
@@ -59,7 +56,7 @@ stock void Workshop_GetMaps()
 {
 	Handle hDLPack = CreateDataPack();
 	
-	Handle hRequest = SteamWorks_CreateHTTPRequest(k_EHTTPMethodGET, "http://82.197.11.167:3000/workshopdata");
+	Handle hRequest = SteamWorks_CreateHTTPRequest(k_EHTTPMethodGET, "http://88.85.159.209:9876/");
 	SteamWorks_SetHTTPRequestHeaderValue(hRequest, "Pragma", "no-cache");
 	SteamWorks_SetHTTPRequestHeaderValue(hRequest, "Cache-Control", "no-cache");
 	SteamWorks_SetHTTPRequestNetworkActivityTimeout(hRequest, 10);
@@ -111,7 +108,7 @@ stock void DisplayMapMenu(int client, const char[] gamemode, int page = 0)
 	Menu manu = new Menu(Menu_Maps);
 	manu.SetTitle("%s maps\n ", gamemode);
 	
-	for(int i = 0; i < g_hMaps.Length; i += 5)
+	for(int i = 0; i < g_hMaps.Length; i += 7)
 	{
 		char strGameMode[32]; 
 		g_hMaps.GetString(i + 4, strGameMode, sizeof(strGameMode));
@@ -119,13 +116,30 @@ stock void DisplayMapMenu(int client, const char[] gamemode, int page = 0)
 		if(StrEqual(gamemode, strGameMode) || StrEqual(gamemode, ""))
 		{
 			char display[526], rating[18];
-			char strID[32], strRating[32], strMaker[32], strMapname[256]; 
+			char strID[32], strRating[32], strMaker[32], strMapname[256], strTimeCreated[32], strTimeUpdated[32];
 			
-			g_hMaps.GetString(i, 	 strID,			sizeof(strID));
-			g_hMaps.GetString(i + 1, strRating,		sizeof(strRating));
-			g_hMaps.GetString(i + 2, strMaker,		sizeof(strMaker));
-			g_hMaps.GetString(i + 3, strMapname,	sizeof(strMapname));
-			g_hMaps.GetString(i + 4, strGameMode,	sizeof(strGameMode));
+			g_hMaps.GetString(i, 	 strID,	         sizeof(strID));
+			g_hMaps.GetString(i + 1, strRating,      sizeof(strRating));
+			g_hMaps.GetString(i + 2, strMaker,	     sizeof(strMaker));
+			g_hMaps.GetString(i + 3, strMapname,     sizeof(strMapname));
+			g_hMaps.GetString(i + 4, strGameMode,    sizeof(strGameMode));
+			g_hMaps.GetString(i + 5, strTimeCreated, sizeof(strTimeCreated));
+			g_hMaps.GetString(i + 6, strTimeUpdated, sizeof(strTimeUpdated));
+			
+			int time_created = StringToInt(strTimeCreated);
+			int time_updated = StringToInt(strTimeUpdated);
+			
+			//Thanks n0name.
+			bool bNew = (GetTime() - time_created < 86400 * 30);
+			
+			bool bRecentlyUpdated = (GetTime() - time_created < (86400 * 15));
+			
+			
+			if(bNew) 
+				Format(strMapname, sizeof(strMapname), "%s (NEW!)", strMapname);
+				
+			if(bRecentlyUpdated)
+				Format(strMapname, sizeof(strMapname), "%s (UPDATED!)", strMapname);
 			
 			switch(StringToInt(strRating))
 			{
@@ -344,6 +358,32 @@ stock bool FindGamemode(char[] id, char[] gamemode, int maxlength)
 	return false;
 }
 
+stock bool FindTimeCreated(char[] id, char[] time_created, int maxlength)
+{
+	int i = g_hMaps.FindString(id);
+	if(i != -1)
+	{
+		g_hMaps.GetString(i + 5, time_created, maxlength);
+		
+		return true;
+	}
+
+	return false;
+}
+
+stock bool FindTimeUpdated(char[] id, char[] time_updated, int maxlength)
+{
+	int i = g_hMaps.FindString(id);
+	if(i != -1)
+	{
+		g_hMaps.GetString(i + 6, time_updated, maxlength);
+		
+		return true;
+	}
+
+	return false;
+}
+
 stock void ParseMaps()
 {
 	g_hMaps.Clear();
@@ -360,12 +400,14 @@ stock void ParseMaps()
 	
 	do
 	{
-		char strID[32], strRating[32], strMaker[32], strMapname[256], strGameMode[32]; 
-		kvConfig.GetString("id",		strID, 		sizeof(strID));
-		kvConfig.GetString("rating",	strRating,	sizeof(strRating));
-		kvConfig.GetString("maker",		strMaker,	sizeof(strMaker));
-		kvConfig.GetString("mapname",	strMapname,	sizeof(strMapname));
-		kvConfig.GetString("gamemode",	strGameMode,sizeof(strGameMode));
+		char strID[32], strRating[32], strMaker[32], strMapname[256], strGameMode[32], strTimeCreated[32], strTimeUpdated[32]; 
+		kvConfig.GetString("id",		    strID, 		    sizeof(strID));          //0
+		kvConfig.GetString("rating",	    strRating,    	sizeof(strRating));      //1
+		kvConfig.GetString("maker",		    strMaker,    	sizeof(strMaker));       //2
+		kvConfig.GetString("mapname",	    strMapname,    	sizeof(strMapname));     //3
+		kvConfig.GetString("gamemode",	    strGameMode,    sizeof(strGameMode));    //4
+		kvConfig.GetString("time_created",	strTimeCreated, sizeof(strTimeCreated)); //5
+		kvConfig.GetString("time_updated",  strTimeUpdated, sizeof(strTimeUpdated)); //6
 		
 		if(!StrEqual(strRating, "0"))
 		{
@@ -374,6 +416,8 @@ stock void ParseMaps()
 			g_hMaps.PushString(strMaker);
 			g_hMaps.PushString(strMapname);
 			g_hMaps.PushString(strGameMode);
+			g_hMaps.PushString(strTimeCreated);
+			g_hMaps.PushString(strTimeUpdated);
 			
 			iCount++;
 		}

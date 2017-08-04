@@ -23,24 +23,6 @@ public void OnPluginStart()
 {
 	g_hMaps = CreateArray(64);
 
-	g_hGamemodeMenu = CreateMenu(MenuGamemodeHandler);
-	g_hGamemodeMenu.SetTitle("[WorkshopMaps] Select Gamemode\n ");
-	g_hGamemodeMenu.AddItem("PL", "Payload");
-	g_hGamemodeMenu.AddItem("PLR", "Payload Race");
-	g_hGamemodeMenu.AddItem("CP", "Control Point");
-	g_hGamemodeMenu.AddItem("AD", "Attack/Defence");
-	g_hGamemodeMenu.AddItem("CTF", "Capture the Flag");
-	g_hGamemodeMenu.AddItem("ARENA", "Arena");
-	g_hGamemodeMenu.AddItem("KOTH", "King of the Hill");
-	g_hGamemodeMenu.AddItem("SD", "Special Delivery");
-	g_hGamemodeMenu.AddItem("MEDIEVAL", "Medieval");
-	g_hGamemodeMenu.AddItem("SPECIALITY", "Speciality");
-	g_hGamemodeMenu.AddItem("PASS", "Pass Time");
-	g_hGamemodeMenu.AddItem("MANNPOWER", "Mannpower");
-	g_hGamemodeMenu.AddItem("MVM", "Mann vs. Machine");
-	g_hGamemodeMenu.AddItem("RD", "Robot Destruction");
-	g_hGamemodeMenu.ExitButton = true;
-
 	RegAdminCmd("sm_showmaps", Command_ShowMaps, ADMFLAG_BAN);
 	RegAdminCmd("sm_installmap", Command_ManualMap, ADMFLAG_BAN);
 }
@@ -130,9 +112,12 @@ stock void DisplayMapMenu(int client, const char[] gamemode, int page = 0)
 			int time_updated = StringToInt(strTimeUpdated);
 			
 			//Thanks n0name.
+			
+			//Maps under 30 days old are considered new.
 			bool bNew = (GetTime() - time_created < 86400 * 30);
 			
-			bool bRecentlyUpdated = (GetTime() - time_created < (86400 * 15));
+			//Updated if map last updated a week ago.
+			bool bRecentlyUpdated = (GetTime() - time_updated < (86400 * 7));
 			
 			
 			if(bNew) 
@@ -398,6 +383,8 @@ stock void ParseMaps()
 	
 	int iCount = 0, iBadCount = 0;
 	
+	ArrayList hGameModes = new ArrayList(64);
+	
 	do
 	{
 		char strID[32], strRating[32], strMaker[32], strMapname[256], strGameMode[32], strTimeCreated[32], strTimeUpdated[32]; 
@@ -419,6 +406,11 @@ stock void ParseMaps()
 			g_hMaps.PushString(strTimeCreated);
 			g_hMaps.PushString(strTimeUpdated);
 			
+			int i = hGameModes.FindString(strGameMode);
+			if(i == -1){
+				hGameModes.PushString(strGameMode);
+			}
+			
 			iCount++;
 		}
 		else
@@ -426,6 +418,34 @@ stock void ParseMaps()
 	}
 	while (KvGotoNextKey(kvConfig));
 	
+	g_hGamemodeMenu = CreateMenu(MenuGamemodeHandler);
+	g_hGamemodeMenu.SetTitle("[WorkshopMaps] Select Gamemode\n ");
+	
+	for (int i = 0; i < hGameModes.Length; i++)
+	{
+		char string[64];
+		hGameModes.GetString(i, string, sizeof(string));
+		
+		if(StrEqual(string, "PL", false))         g_hGamemodeMenu.AddItem("PL", "Payload");
+		if(StrEqual(string, "PLR", false))        g_hGamemodeMenu.AddItem("PLR", "Payload Race");
+		if(StrEqual(string, "CP", false))         g_hGamemodeMenu.AddItem("CP", "Control Point");
+		if(StrEqual(string, "AD", false))         g_hGamemodeMenu.AddItem("AD", "Attack/Defence");
+		if(StrEqual(string, "CTF", false))        g_hGamemodeMenu.AddItem("CTF", "Capture the Flag");
+		if(StrEqual(string, "ARENA", false))      g_hGamemodeMenu.AddItem("ARENA", "Arena");
+		if(StrEqual(string, "KOTH", false))       g_hGamemodeMenu.AddItem("KOTH", "King of the Hill");
+		if(StrEqual(string, "SD", false))         g_hGamemodeMenu.AddItem("SD", "Special Delivery");
+		if(StrEqual(string, "MEDIEVAL", false))   g_hGamemodeMenu.AddItem("MEDIEVAL", "Medieval");
+		if(StrEqual(string, "SPECIALITY", false)) g_hGamemodeMenu.AddItem("SPECIALITY", "Speciality");
+		if(StrEqual(string, "PASS", false))       g_hGamemodeMenu.AddItem("PASS", "Pass Time");
+		if(StrEqual(string, "MANNPOWER", false))  g_hGamemodeMenu.AddItem("MANNPOWER", "Mannpower");
+		if(StrEqual(string, "MVM", false))        g_hGamemodeMenu.AddItem("MVM", "Mann vs. Machine");
+		if(StrEqual(string, "RD", false))         g_hGamemodeMenu.AddItem("RD", "Robot Destruction");
+	}
+	
+	g_hGamemodeMenu.ExitButton = true;
+	
 	PrintToServer("[WorkshopData] Got %i good maps, left out %i bad maps", iCount, iBadCount);
+	
+	delete hGameModes;
 	delete kvConfig;
 }

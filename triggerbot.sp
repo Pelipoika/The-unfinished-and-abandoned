@@ -109,15 +109,8 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 public void OnPluginStart()
 {
 	RegAdminCmd("sm_hacks", Command_Trigger, ADMFLAG_ROOT);
-	RegAdminCmd("sm_parachutetest", Command_Parachute, ADMFLAG_ROOT);
-	
-	for (int i = 1; i <= MaxClients; i++)
-	{
-		if(IsClientInGame(i))
-		{
-			OnClientPutInServer(i);
-		}
-	}
+
+	for (int i = 1; i <= MaxClients; i++){	if(IsClientInGame(i)) { OnClientPutInServer(i); }}
 	
 	g_hPredictionQuality = CreateConVar("sm_triggerbot_prediction_quality", "1.0", "Projectile Aimbot projectile prediction quality");
 	
@@ -177,32 +170,6 @@ public void OnPluginStart()
 	PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_ByRef, _, VENCODE_FLAG_COPYBACK);
 	PrepSDKCall_AddParameter(SDKType_QAngle, SDKPass_ByRef, _, VENCODE_FLAG_COPYBACK);
 	if ((g_hGetBonePosition = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for CBaseAnimating::GetBonePosition signature!");
-}
-
-public Action Command_Parachute(int client, int argc)
-{
-	for (int i = 1; i <= MaxClients; i++)
-	{
-		if(i == client)
-			continue;
-	
-		if(!IsClientInGame(i))
-			continue;
-			
-		if(!IsPlayerAlive(i))
-			continue;
-			
-		float vecPos[3];
-		GetClientAbsOrigin(i, vecPos);
-		
-		vecPos[2] += 500.0;
-		
-		TeleportEntity(i, vecPos, NULL_VECTOR, NULL_VECTOR);
-		
-		TF2_AddCondition(i, TFCond_Parachute, 30.0);
-	}
-
-	return Plugin_Handled;
 }
 
 int g_iPathLaserModelIndex;
@@ -550,18 +517,10 @@ public void DidHit(int userid)
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
-	if(IsFakeClient(client))
-	{
-	//	vel[0] = 500.0;
-		
-		if(TF2_IsPlayerInCondition(client, TFCond_Parachute))
-		{
-			buttons |= IN_JUMP;
-		}
-	}
-	
 	if(IsFakeClient(client) || !IsPlayerAlive(client)) 
 		return Plugin_Continue;	
+	
+//	PrintCenterText(client, "%f %f %f", angles[0], angles[1], angles[2]);
 	
 	bool bChanged = false;
 	
@@ -625,7 +584,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		if(!IsValidEntity(iAw))
 			return Plugin_Continue;
 
-		if(IsPlayerReloading(client))
+		if(IsPlayerReloading(client) && !(buttons & IN_ATTACK))
 			return Plugin_Continue;
 		
 		int iTarget = FindBestTarget(client, angles);
@@ -657,15 +616,15 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 					float pred[3]; pred = PredictCorrection(client, iAw, iTarget, myEyePosition, g_hPredictionQuality.IntValue); 
 					AddVectors(target_point, pred, target_point);
 					
-				//	int iWeaponID = SDKCall(g_hGetWeaponID, iAw);
-				//	float flProjectileGravity = GetProjectileGravity(iAw);
-				//	float flProjectileSpeed   = GetProjectileSpeed(iAw);
+					int iWeaponID = SDKCall(g_hGetWeaponID, iAw);
+					float flProjectileGravity = GetProjectileGravity(iAw);
+					float flProjectileSpeed   = GetProjectileSpeed(iAw);
 					
-				//	PrintCenterText(client, "WeaponID %i\nGravity %f\nSpeed %f", iWeaponID, flProjectileGravity, flProjectileSpeed);
+					PrintCenterText(client, "WeaponID %i\nGravity %f\nSpeed %f", iWeaponID, flProjectileGravity, flProjectileSpeed);
 				}
 				else
 				{
-					target_point[2] += 5.0;		
+					target_point[2] += 2.5;		
 				
 					float target_velocity[3];
 					GetEntPropVector(iTarget, Prop_Data, "m_vecAbsVelocity", target_velocity);
@@ -673,20 +632,20 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 					float player_velocity[3];
 					GetEntPropVector(client, Prop_Data, "m_vecAbsVelocity", player_velocity);
 					
-					//Predict "localplayer"
+					//Predict "localplayer", bad idea.
 					float delta[3];
-					delta[0] = player_velocity[0] * (1 / 66);
+				/*	delta[0] = player_velocity[0] * (1 / 66);
 					delta[1] = player_velocity[1] * (1 / 66);
 					delta[2] = player_velocity[2] * (1 / 66);
 					
 					myEyePosition[0] = myEyePosition[0] + delta[0];
 					myEyePosition[1] = myEyePosition[1] + delta[1];
-					myEyePosition[2] = myEyePosition[2] + delta[2];
+					myEyePosition[2] = myEyePosition[2] + delta[2];*/
 					
 					//Predict target
-					delta[0] = target_velocity[0] * (1 / 66);
-					delta[1] = target_velocity[1] * (1 / 66);
-					delta[2] = target_velocity[2] * (1 / 66);
+					delta[0] = target_velocity[0] * GetTickInterval();
+					delta[1] = target_velocity[1] * GetTickInterval();
+					delta[2] = target_velocity[2] * GetTickInterval();
 					
 					target_point[0] = target_point[0] - delta[0];
 					target_point[1] = target_point[1] - delta[1];
@@ -721,9 +680,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 					ScaleVector(target_velocity, correct);
 					SubtractVectors(target_point, target_velocity, target_point);
 					
-					float vecPunch[3];
-					GetEntPropVector(client, Prop_Send, "m_vecPunchAngle", vecPunch);
-					AddVectors(target_point, vecPunch, target_point);
+					SetEntPropVector(client, Prop_Send, "m_vecPunchAngle", view_as<float>({0.0, 0.0, 0.0}));
 				}
 			}
 			else
@@ -770,7 +727,6 @@ stock float[] PredictCorrection(int iClient, int iWeapon, int iTarget, float vec
 		return vecFrom;
 		
 	float flSpeed = GetProjectileSpeed(iWeapon);
-	
 	if(flSpeed <= 0.0)
 		return vecFrom;
 		
@@ -895,6 +851,9 @@ stock float[] PredictCorrection(int iClient, int iWeapon, int iTarget, float vec
 //tf_parachute_gravity : 0.2f : , "sv", "rep", "launcher" : Gravity while parachute is deployed
 stock float PlayerGravityMod(int client)
 {
+	if(GetEntityMoveType(client) == MOVETYPE_NOCLIP)
+		return 0.0;
+
 	if(TF2_IsPlayerInCondition(client, TFCond_Parachute))
 		return 0.2;
 		
@@ -1215,7 +1174,7 @@ stock void FixSilentAimMovement(int client, float vel[3], float angles[3], float
 
 stock int FindBestHitbox(int client, float playerEyeAngles[3], int target)
 {
-	int iBestHitBox = LookupBone(target, "bip_spine_2");
+	int iBestHitBox = LookupBone(target, "bip_pelvis");
 	int iActiveWeapon = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
 	
 	TFClassType playerClass = TF2_GetPlayerClass(client);
@@ -1319,11 +1278,16 @@ stock bool IsPointVisible(int looker, int target, float start[3], float point[3]
 
 public void TF2_OnConditionAdded(int client, TFCond condition)
 {
-	if(condition == TFCond_Slowed && g_bNoSlowDown[client])
-	{
+	if(!g_bNoSlowDown[client])
+		return;
+
+	if(condition == TFCond_Slowed)
 		TF2_RemoveCondition(client, TFCond_Slowed);
-		TF2_AddCondition(client, TFCond_SpeedBuffAlly, 0.0);
-	}
+	
+	if(condition == TFCond_Dazed)
+		TF2_RemoveCondition(client, TFCond_Dazed);
+	
+	TF2_AddCondition(client, TFCond_SpeedBuffAlly, 0.0);
 }
 
 stock bool TF2_IsKillable(int entity)
@@ -1692,6 +1656,7 @@ stock float GetProjectileGravity(int iWeapon)
 		case TF_WEAPON_CROSSBOW:                flProjectileGravity *= 65.0;
 		case TF_WEAPON_COMPOUND_BOW:            flProjectileGravity *= 65.0;
 		case TF_WEAPON_GRENADELAUNCHER:         flProjectileGravity = 50.0;
+		case TF_WEAPON_PIPEBOMBLAUNCHER:        flProjectileGravity = 60.0;
 		case TF_WEAPON_SYRINGEGUN_MEDIC:        flProjectileGravity = 15.0;
 		case TF_WEAPON_SHOTGUN_BUILDING_RESCUE: flProjectileGravity *= 70.0;
 	}

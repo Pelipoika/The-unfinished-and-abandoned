@@ -21,6 +21,7 @@ bool g_bTeammates[MAXPLAYERS + 1];
 bool g_bShotCounter[MAXPLAYERS + 1];
 bool g_bBunnyHop[MAXPLAYERS + 1];
 bool g_bSpectators[MAXPLAYERS + 1];
+bool g_bHeadshots[MAXPLAYERS + 1];
 
 int g_iAimType[MAXPLAYERS + 1];
 float g_flAimFOV[MAXPLAYERS + 1];
@@ -75,8 +76,6 @@ enum{
 //https://www.unknowncheats.me/forum/1502192-post9.html
 //Use "real angles" not "silent aim angles" for aimbot
 
-ConVar g_hPredictionQuality;
-
 public Plugin myinfo = 
 {
 	name = "[TF2] Badmin",
@@ -86,44 +85,24 @@ public Plugin myinfo =
 	url = "http://www.sourcemod.net/plugins.php?author=Pelipoika&search=1"
 };
 
-/*
-public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
-{
-    if(!(GetEntityFlags(client) & FL_ONGROUND))
-    {
-		if(mouse[0] > 0)
-		{
-			vel[1] = 450.0;
-			buttons |= IN_MOVERIGHT;
-		}
- 
-		else if(mouse[0] < 0)
-		{
-			vel[1] = -450.0;
-			buttons |= IN_MOVELEFT;
-		}
-	}
-}
-*/
-
 public void OnPluginStart()
 {
-	RegAdminCmd("sm_hacks", Command_Trigger, ADMFLAG_ROOT);
+	RegAdminCmd("sm_hacks", Command_Trigger, ADMFLAG_BAN);
 
-	for (int i = 1; i <= MaxClients; i++){	if(IsClientInGame(i)) { OnClientPutInServer(i); }}
-	
-	g_hPredictionQuality = CreateConVar("sm_triggerbot_prediction_quality", "1.0", "Projectile Aimbot projectile prediction quality");
+	for (int i = 1; i <= MaxClients; i++)
+	{	
+		if(IsClientInGame(i)) 
+		{ 
+			OnClientPutInServer(i); 
+		}
+		
+		g_hHudRadar[i] = CreateHudSynchronizer();
+	}
 	
 	g_hHudInfo = CreateHudSynchronizer();
 	g_hHudShotCounter = CreateHudSynchronizer();
 	g_hHudEnemyAim = CreateHudSynchronizer();
-	
-	//Ohno
-	for (int i = 1; i <= MaxClients; i++)
-	{
-		g_hHudRadar[i] = CreateHudSynchronizer();
-	}
-	
+
 	//CTFWeaponBase::PrimaryAttack()
 	g_hPrimaryAttack = DHookCreate(437, HookType_Entity, ReturnType_Void, ThisPointer_CBaseEntity, CTFWeaponBase_PrimaryAttack);
 	
@@ -184,13 +163,16 @@ public void OnClientPutInServer(int client)
 	g_bNoSlowDown[client] = false;
 	g_bAllCrits[client] = false;
 	g_bNoSpread[client] = false;
+	
 	g_bAimbot[client] = false;
 	g_bAutoShoot[client] = false;
 	g_bSilentAim[client] = false;
-	g_bTeammates[client] = false;
+	
 	g_bShotCounter[client] = false;
+	g_bTeammates[client] = false;
 	g_bBunnyHop[client] = false;
 	g_bSpectators[client] = false;
+	g_bHeadshots[client] = false;
 	
 	g_iAimType[client] = AIM_NEAR;
 	g_flAimFOV[client] = 10.0;
@@ -217,7 +199,7 @@ public Action Command_Trigger(int client, int args)
 stock void DisplayHackMenuAtItem(int client, int page = 0)
 {
 	Menu menu = new Menu(MenuLegitnessHandler);
-	menu.SetTitle("Hacker!");
+	menu.SetTitle("LMAOBOX");
 	menu.AddItem("0", "Aimbot");
 	menu.AddItem("1", "Misc");
 	menu.AddItem("2", "Visuals");
@@ -264,6 +246,11 @@ stock void DisplayAimbotMenuAtItem(int client, int page = 0)
 		menu.AddItem("4", "Aim at teammates: On");
 	else
 		menu.AddItem("4", "Aim at teammates: Off");
+		
+	if(g_bHeadshots[client])
+		menu.AddItem("0", "Headshots only: On");
+	else
+		menu.AddItem("0", "Headshots only: Off");
 	
 	menu.ExitButton = true;
 	menu.ExitBackButton = true;
@@ -373,7 +360,21 @@ public int MenuAimbotHandler(Menu menu, MenuAction action, int param1, int param
 	{
 		switch(param2)
 		{		
-			case 0: g_bAimbot[param1]    = !g_bAimbot[param1];
+			case 0: 
+			{
+				g_bAimbot[param1]    = !g_bAimbot[param1];
+				
+				if(g_bAimbot[param1])
+				{
+					SetEntProp(param1, Prop_Data, "m_bLagCompensation", false);
+					SetEntProp(param1, Prop_Data, "m_bPredictWeapons", false);
+				}
+				else
+				{
+					SetEntProp(param1, Prop_Data, "m_bLagCompensation", true);
+					SetEntProp(param1, Prop_Data, "m_bPredictWeapons", true);
+				}
+			}
 			case 1: 
 			{
 				if(g_iAimType[param1] == AIM_NEAR)
@@ -402,6 +403,7 @@ public int MenuAimbotHandler(Menu menu, MenuAction action, int param1, int param
 			}
 			case 5: g_bSilentAim[param1]  = !g_bSilentAim[param1];
 			case 6: g_bTeammates[param1]  = !g_bTeammates[param1];
+			case 7: g_bHeadshots[param1]  = !g_bHeadshots[param1];
 		}
 		
 		DisplayAimbotMenuAtItem(param1, GetMenuSelectionPosition());
@@ -485,6 +487,8 @@ public MRESReturn CTFWeaponBase_PrimaryAttack(int pThis, Handle hReturn, Handle 
 
 public void TraceAttack(int victim, int attacker, int inflictor, float damage, int damagetype, int ammotype, int hitbox, int hitgroup)
 {
+	//PrintToServer("Hitbox %i hitgroup %i", hitbox, hitgroup);
+
 	if(attacker > 0 && attacker <= MaxClients && IsClientInGame(attacker))
 	{
 		RequestFrame(TraceAttackDelay, GetClientUserId(attacker));
@@ -571,7 +575,6 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		if(g_flNextTime[client] <= GetGameTime())
 		{
 			Radar(client, angles);
-		
 			EnemyIsAimingAtYou(client);
 			
 			g_flNextTime[client] = GetGameTime() + UMSG_SPAM_DELAY;
@@ -587,139 +590,120 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		if(IsPlayerReloading(client) && !(buttons & IN_ATTACK))
 			return Plugin_Continue;
 		
-		int iTarget = FindBestTarget(client, angles);
-		if(iTarget != -1)
-		{
-			float myEyePosition[3];
-			GetClientEyePosition(client, myEyePosition);
+		if(!IsReadyToFire(iAw))
+			return Plugin_Continue;
 		
-			float target_point[3], vNothing[3];
-			int iBone = FindBestHitbox(client, angles, iTarget);
-			if(iBone == -1)
-				return Plugin_Continue;
-			
-			GetBonePosition(iTarget, iBone, target_point, vNothing);
-					
-			if(iTarget > 0 && iTarget <= MaxClients)
-			{
-				SetHudTextParams(0.55, 0.55, 0.1, 0, 255, 0, 0, 0, 0.0, 0.0, 0.0);
-				ShowSyncHudText(client, g_hHudInfo, "%N [%i HP]", iTarget, GetEntProp(iTarget, Prop_Data, "m_iHealth"));
-				
-				if(IsProjectileWeapon(iAw))
-				{
-					if(IsExplosiveProjectileWeapon(iAw) && GetEntityFlags(iTarget) & FL_ONGROUND)
-					{
-						//Aim at feet if on ground.
-						GetClientAbsOrigin(iTarget, target_point);
-					}
-					
-					float pred[3]; pred = PredictCorrection(client, iAw, iTarget, myEyePosition, g_hPredictionQuality.IntValue); 
-					AddVectors(target_point, pred, target_point);
-					
-					int iWeaponID = SDKCall(g_hGetWeaponID, iAw);
-					float flProjectileGravity = GetProjectileGravity(iAw);
-					float flProjectileSpeed   = GetProjectileSpeed(iAw);
-					
-					PrintCenterText(client, "WeaponID %i\nGravity %f\nSpeed %f", iWeaponID, flProjectileGravity, flProjectileSpeed);
-				}
-				else
-				{
-					target_point[2] += 2.5;		
-				
-					float target_velocity[3];
-					GetEntPropVector(iTarget, Prop_Data, "m_vecAbsVelocity", target_velocity);
-					
-					float player_velocity[3];
-					GetEntPropVector(client, Prop_Data, "m_vecAbsVelocity", player_velocity);
-					
-					//Predict "localplayer", bad idea.
-					float delta[3];
-				/*	delta[0] = player_velocity[0] * (1 / 66);
-					delta[1] = player_velocity[1] * (1 / 66);
-					delta[2] = player_velocity[2] * (1 / 66);
-					
-					myEyePosition[0] = myEyePosition[0] + delta[0];
-					myEyePosition[1] = myEyePosition[1] + delta[1];
-					myEyePosition[2] = myEyePosition[2] + delta[2];*/
-					
-					//Predict target
-					delta[0] = target_velocity[0] * GetTickInterval();
-					delta[1] = target_velocity[1] * GetTickInterval();
-					delta[2] = target_velocity[2] * GetTickInterval();
-					
-					target_point[0] = target_point[0] - delta[0];
-					target_point[1] = target_point[1] - delta[1];
-					target_point[2] = target_point[2] - delta[2];
-					
-					/*
-					#define clamp(a,b,c) ( (a) > (c) ? (c) : ( (a) < (b) ? (b) : (a) ) )
-					
-					#define TIME_TO_TICKS( dt )		( (int)( 0.5f + (float)(dt) / TICK_INTERVAL ) )
-					#define TICKS_TO_TIME( t )		( TICK_INTERVAL *( t ) )
-					#define ROUND_TO_TICKS( t )		( TICK_INTERVAL * TIME_TO_TICKS( t ) )
-					*/
-					
-					// correct is the amout of time we have to correct game time
-					float correct = 0.0;
-					
-					// add network latency
-					correct += GetClientLatency(client, NetFlow_Outgoing);
-					
-					// calc number of view interpolation ticks - 1
-					int lerpTicks = RoundToFloor(0.5 + GetPlayerLerp(client) / GetTickInterval());
-					
-					// add view interpolation latency see C_BaseEntity::GetInterpolationAmount()
-					correct += (GetTickInterval() * lerpTicks);
-					
-					// check bounds [0,sv_maxunlag]
-					float sv_unlag = FindConVar("sv_maxunlag").FloatValue;
-					correct = (correct > sv_unlag ? sv_unlag : (correct < 0.0 ? 0.0 : correct));
-				
-			//		PrintCenterText(client, "correct %f tickcount %i", correct, tickcount);
-					
-					ScaleVector(target_velocity, correct);
-					SubtractVectors(target_point, target_velocity, target_point);
-					
-					SetEntPropVector(client, Prop_Send, "m_vecPunchAngle", view_as<float>({0.0, 0.0, 0.0}));
-				}
-			}
-			else
-			{
-				SetHudTextParams(0.55, 0.55, 0.1, 0, 255, 0, 255, 0, 0.0, 0.0, 0.0);
-				ShowSyncHudText(client, g_hHudInfo, "[%i / %i HP]", GetEntProp(iTarget, Prop_Data, "m_iHealth"), GetEntProp(iTarget, Prop_Data, "m_iMaxHealth"));
-			}
-			
-			float eye_to_target[3];
-			SubtractVectors(target_point, myEyePosition, eye_to_target);
-			GetVectorAngles(eye_to_target, eye_to_target);
-			
-			eye_to_target[0] = AngleNormalize(eye_to_target[0]);
-			eye_to_target[1] = AngleNormalize(eye_to_target[1]);
-			eye_to_target[2] = 0.0;
-			
-			if(g_bAutoShoot[client])
-			{
-				if(IsReadyToFire(iAw))
-					buttons |= IN_ATTACK;
-			}
-			
-			if(!g_bSilentAim[client])
-			{
-				TeleportEntity(client, NULL_VECTOR, eye_to_target, NULL_VECTOR);
-			}
-			else
-			{
-				FixSilentAimMovement(client, vel, angles, eye_to_target);
-			}
-			
-			angles = eye_to_target;
-			
-			bChanged = true;
+		float target_point[3]; target_point = SelectBestTargetPos(client, angles);
+		if (FloatCompare(target_point[2], 0.0) == 0)
+			return Plugin_Continue;
+		
+		float eye_to_target[3];
+		SubtractVectors(target_point, GetEyePosition(client), eye_to_target);
+		GetVectorAngles(eye_to_target, eye_to_target);
+		
+		eye_to_target[0] = AngleNormalize(eye_to_target[0]);
+		eye_to_target[1] = AngleNormalize(eye_to_target[1]);
+		eye_to_target[2] = 0.0;
+		
+		if(g_bAutoShoot[client])
+		{
+			buttons |= IN_ATTACK;
 		}
+		
+		if(buttons & IN_ATTACK)
+		{
+			SetEntPropVector(client, Prop_Send, "m_vecPunchAngle", view_as<float>({0.0, 0.0, 0.0}));
+		}
+		
+		if(!g_bSilentAim[client]) {
+			TeleportEntity(client, NULL_VECTOR, eye_to_target, NULL_VECTOR);
+		}
+		else {
+			FixSilentAimMovement(client, vel, angles, eye_to_target);
+		}
+		
+		angles = eye_to_target;
+		bChanged = true;
 	}
 	
 	return bChanged ? Plugin_Changed : Plugin_Continue;
 }
+
+
+
+//Do all predictions so we can catch people coming round corners.
+stock float[] SelectBestTargetPos(int client, float playerEyeAngles[3])
+{
+	float flBestDistance = 99999.0;
+	float best_target_point[3];
+
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		if(i == client)
+			continue;
+		
+		if(!IsClientInGame(i))
+			continue;
+		
+		if(!IsPlayerAlive(i))
+			continue;
+		
+		if(GetEntProp(i, Prop_Send, "m_iTeamNum") == GetClientTeam(client))
+			continue;
+		
+		if(!TF2_IsKillable(i))
+			continue;
+		
+		float target_point[3];
+		
+		if(IsProjectileWeapon(GetActiveWeapon(client)))
+		{
+			int iBone = LookupBone(i, "bip_pelvis");
+			if(iBone == -1)
+				continue;
+			
+			float vNothing[3];
+			GetBonePosition(i, iBone, target_point, vNothing);
+		
+			float vecAbs[3]; vecAbs = GetAbsOrigin(i)
+			vecAbs[2] += 5.0;
+		
+			if(GetEntityFlags(i) & FL_ONGROUND 
+			&& IsExplosiveProjectileWeapon(GetActiveWeapon(client)) 
+			&& IsPointVisible(client, i, GetEyePosition(client), vecAbs))
+			{
+				//Aim at feet with explosive weapons.
+				target_point = vecAbs;
+			}
+			
+			AddVectors(target_point, PredictCorrection(client, GetActiveWeapon(client), i, GetAbsOrigin(client), 1), target_point);
+		}
+		else
+		{
+			int iBone = FindBestHitbox(client, playerEyeAngles, i);
+			if(iBone == -1)
+				continue;
+				
+			float vNothing[3];
+			GetBonePosition(i, iBone, target_point, vNothing);
+		}
+		
+		if(IsPointVisible(client, i, GetEyePosition(client), target_point))
+		{
+			float flDistance = GetVectorDistance(target_point, best_target_point);
+			
+			if(flDistance < flBestDistance)
+			{
+				flBestDistance = flDistance;
+				best_target_point = target_point;
+			}
+		}
+	}
+
+	return best_target_point;
+}
+
+
 
 stock float[] PredictCorrection(int iClient, int iWeapon, int iTarget, float vecFrom[3], int iQuality)
 {
@@ -772,6 +756,9 @@ stock float[] PredictCorrection(int iClient, int iWeapon, int iTarget, float vec
 	Handle Trace = null;
 	
 	int iSteps = 0;
+	
+	if(flArrivalTime >= 2.0)
+		return NULL_VECTOR;
 	
 	for(float flTravelTime = 0.0; flTravelTime < flArrivalTime; flTravelTime += (GetTickInterval() * iQuality))
 	{
@@ -1174,7 +1161,7 @@ stock void FixSilentAimMovement(int client, float vel[3], float angles[3], float
 
 stock int FindBestHitbox(int client, float playerEyeAngles[3], int target)
 {
-	int iBestHitBox = LookupBone(target, "bip_pelvis");
+	int iBestHitBox = g_bHeadshots[client] ? LookupBone(target, "bip_head") : LookupBone(target, "bip_pelvis");
 	int iActiveWeapon = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
 	
 	TFClassType playerClass = TF2_GetPlayerClass(client);
@@ -1182,8 +1169,7 @@ stock int FindBestHitbox(int client, float playerEyeAngles[3], int target)
 	if(iActiveWeapon == GetPlayerWeaponSlot(client, TFWeaponSlot_Primary))
 	{
 		//If they're a sniper and zoomed in or a spy..
-		if (((TF2_IsPlayerInCondition(client, TFCond_Zoomed) || SDKCall(g_hGetWeaponID, iActiveWeapon) == TF_WEAPON_COMPOUND_BOW) && playerClass == TFClass_Sniper)
-		|| playerClass == TFClass_Spy)
+		if (((TF2_IsPlayerInCondition(client, TFCond_Zoomed) || SDKCall(g_hGetWeaponID, iActiveWeapon) == TF_WEAPON_COMPOUND_BOW) && playerClass == TFClass_Sniper) || playerClass == TFClass_Spy)
 		{
 			//Aim at head
 			iBestHitBox = LookupBone(target, "bip_head");
@@ -1194,11 +1180,11 @@ stock int FindBestHitbox(int client, float playerEyeAngles[3], int target)
 	{
 		return iBestHitBox;
 	}
-	else
+	else if(!g_bHeadshots[client])
 	{
 		iBestHitBox = -1;
 		
-		for (int i = 0; i < 17; i++)	//Replace with GetNumBones eventually.
+		for (int i = 0; i < 128; i++)	//Replace with GetNumBones eventually.
 		{
 			if(IsBoneVisible(client, playerEyeAngles, target, i))
 			{
@@ -1268,7 +1254,7 @@ float angleBetween(float f[3], float v[3])
 stock bool IsPointVisible(int looker, int target, float start[3], float point[3])
 {
 	TR_TraceRayFilter(start, point, MASK_SHOT|CONTENTS_GRATE, RayType_EndPoint, AimTargetFilter, looker);
-	if(TR_DidHit() && TR_GetEntityIndex() == target)
+	if(!TR_DidHit() || TR_GetEntityIndex() == target)
 	{
 		return true;
 	}
@@ -1595,7 +1581,7 @@ stock bool IsReadyToFire(int iWeapon)
 		{
 			float flLastFireTime = GetGameTime() - GetEntPropFloat(iWeapon, Prop_Send, "m_flLastFireTime");
 			
-			if(flLastFireTime < 0.95)
+			if(flLastFireTime < 1.0)
 			{
 				return false;
 			}
@@ -1765,4 +1751,37 @@ stock void TE_SendBeam(const float vMins[3], const float vMaxs[3], const int col
 {
 	TE_SetupBeamPoints(vMins, vMaxs, g_iPathLaserModelIndex, g_iPathLaserModelIndex, 0, 0, 0.075, 1.0, 1.0, 1, 0.0, color, 0);
 	TE_SendToAll();
+}
+
+stock float[] GetAbsVelocity(int client)
+{
+	float v[3];
+	GetEntPropVector(client, Prop_Data, "m_vecAbsVelocity", v);
+	return v;
+}
+
+stock float[] GetAbsOrigin(int client)
+{
+	float v[3];
+	GetEntPropVector(client, Prop_Data, "m_vecAbsOrigin", v);
+	return v;
+}
+
+stock float[] GetEyePosition(int client)
+{
+	float v[3];
+	GetClientEyePosition(client, v);
+	return v;
+}
+
+stock float[] GetEyeAngles(int client)
+{
+	float v[3];
+	GetClientEyeAngles(client, v);
+	return v;
+}
+
+stock int GetActiveWeapon(int client)
+{
+	return GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
 }

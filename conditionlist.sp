@@ -37,29 +37,29 @@ public void OnPluginStart()
 	g_hHudInfo = CreateHudSynchronizer();
 	
 	RegConsoleCmd("sm_condlist", Command_CondList, "Toggle condition listing");
-	
+
 	aConditions = new ArrayList(PLATFORM_MAX_PATH);
-	aConditions.PushString("AIMING");
+	aConditions.PushString("AIMING"); //0
 	aConditions.PushString("ZOOMED");
 	aConditions.PushString("DISGUISING");
 	aConditions.PushString("DISGUISED");
 	aConditions.PushString("STEALTHED");
-	aConditions.PushString("INVULNERABLE");
+	aConditions.PushString("INVULNERABLE"); //5
 	aConditions.PushString("TELEPORTED");
 	aConditions.PushString("TAUNTING");
 	aConditions.PushString("INVULNERABLE_WEARINGOFF");
 	aConditions.PushString("STEALTHED_BLINK");
-	aConditions.PushString("SELECTED_TO_TELEPORT");
+	aConditions.PushString("SELECTED_TO_TELEPORT"); //10
 	aConditions.PushString("CRITBOOSTED");
 	aConditions.PushString("TMPDAMAGEBONUS");
 	aConditions.PushString("FEIGN_DEATH");
 	aConditions.PushString("PHASE");
-	aConditions.PushString("STUNNED");
+	aConditions.PushString("STUNNED"); //15
 	aConditions.PushString("OFFENSEBUFF");
 	aConditions.PushString("SHIELD_CHARGE");
 	aConditions.PushString("DEMO_BUFF");
 	aConditions.PushString("ENERGY_BUFF");
-	aConditions.PushString("RADIUSHEAL");
+	aConditions.PushString("RADIUSHEAL"); //20
 	aConditions.PushString("HEALTH_BUFF");
 	aConditions.PushString("BURNING");
 	aConditions.PushString("HEALTH_OVERHEALED");
@@ -69,7 +69,7 @@ public void OnPluginStart()
 	aConditions.PushString("MAD_MILK");
 	aConditions.PushString("MEGAHEAL");
 	aConditions.PushString("REGENONDAMAGEBUFF");
-	aConditions.PushString("MARKEDFORDEATH");
+	aConditions.PushString("MARKEDFORDEATH"); //30
 	aConditions.PushString("NOHEALINGDAMAGEBUFF");
 	aConditions.PushString("SPEED_BOOST");
 	aConditions.PushString("CRITBOOSTED_PUMPKIN");
@@ -159,6 +159,16 @@ public void OnPluginStart()
 	aConditions.PushString("COMPETITIVE_LOSER");
 	aConditions.PushString("HEALING_DEBUFF");
 	aConditions.PushString("PASSTIME_PENALTY_DEBUFF");
+	aConditions.PushString("PARACHUTE_DEPLOYED");
+	aConditions.PushString("NO_COMBAT_SPEED_BOOST");
+	aConditions.PushString("TRANQ_SPY_BOOST");
+	aConditions.PushString("TRANQ_MARKED");
+	aConditions.PushString("ROCKETPACK");
+	aConditions.PushString("ROCKETPACK_PASSENGER");
+	aConditions.PushString("STEALTHED_PHASE");
+	aConditions.PushString("CLIP_OVERLOAD");
+	aConditions.PushString("SPY_CLASS_STEAL");
+	aConditions.PushString("GAS");
 	//Phew
 }
 
@@ -187,13 +197,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 {
 	if(IsFakeClient(client) || !g_bShowConditions[client])
 		return Plugin_Continue;
-
-//CTFPlayerShared::GetPercentInvisible
-//	int offset = FindSendPropInfo("CTFPlayer", "m_Shared") + (80 * 4);
-//	float val = GetEntDataFloat(client, offset);
-	
-//	PrintCenterText(client, "%f", val);
-	
+		
 	char strConds[2000];
 	SetHudTextParams(0.0, 0.3, 0.1, 255, 255, 0, 0, 0, 0.0, 0.0, 0.0);
 	

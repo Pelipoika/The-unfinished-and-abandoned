@@ -37,29 +37,29 @@ public void OnPluginStart()
 	g_hHudInfo = CreateHudSynchronizer();
 	
 	RegConsoleCmd("sm_condlist", Command_CondList, "Toggle condition listing");
-
+	
 	aConditions = new ArrayList(PLATFORM_MAX_PATH);
-	aConditions.PushString("AIMING"); //0
+	aConditions.PushString("AIMING");
 	aConditions.PushString("ZOOMED");
 	aConditions.PushString("DISGUISING");
 	aConditions.PushString("DISGUISED");
 	aConditions.PushString("STEALTHED");
-	aConditions.PushString("INVULNERABLE"); //5
+	aConditions.PushString("INVULNERABLE");
 	aConditions.PushString("TELEPORTED");
 	aConditions.PushString("TAUNTING");
 	aConditions.PushString("INVULNERABLE_WEARINGOFF");
 	aConditions.PushString("STEALTHED_BLINK");
-	aConditions.PushString("SELECTED_TO_TELEPORT"); //10
+	aConditions.PushString("SELECTED_TO_TELEPORT");
 	aConditions.PushString("CRITBOOSTED");
 	aConditions.PushString("TMPDAMAGEBONUS");
 	aConditions.PushString("FEIGN_DEATH");
 	aConditions.PushString("PHASE");
-	aConditions.PushString("STUNNED"); //15
+	aConditions.PushString("STUNNED");
 	aConditions.PushString("OFFENSEBUFF");
 	aConditions.PushString("SHIELD_CHARGE");
 	aConditions.PushString("DEMO_BUFF");
 	aConditions.PushString("ENERGY_BUFF");
-	aConditions.PushString("RADIUSHEAL"); //20
+	aConditions.PushString("RADIUSHEAL");
 	aConditions.PushString("HEALTH_BUFF");
 	aConditions.PushString("BURNING");
 	aConditions.PushString("HEALTH_OVERHEALED");
@@ -69,7 +69,7 @@ public void OnPluginStart()
 	aConditions.PushString("MAD_MILK");
 	aConditions.PushString("MEGAHEAL");
 	aConditions.PushString("REGENONDAMAGEBUFF");
-	aConditions.PushString("MARKEDFORDEATH"); //30
+	aConditions.PushString("MARKEDFORDEATH");
 	aConditions.PushString("NOHEALINGDAMAGEBUFF");
 	aConditions.PushString("SPEED_BOOST");
 	aConditions.PushString("CRITBOOSTED_PUMPKIN");
@@ -119,7 +119,7 @@ public void OnPluginStart()
 	aConditions.PushString("HALLOWEEN_GHOST_MODE");
 	aConditions.PushString("MINICRITBOOSTED_ON_KILL");
 	aConditions.PushString("OBSCURED_SMOKE");
-	aConditions.PushString("PARACHUTE_DEPLOYED");
+	aConditions.PushString("PARACHUTE_ACTIVE");
 	aConditions.PushString("BLASTJUMPING");
 	aConditions.PushString("HALLOWEEN_KART");
 	aConditions.PushString("HALLOWEEN_KART_DASH");

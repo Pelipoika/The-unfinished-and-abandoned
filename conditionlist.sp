@@ -159,16 +159,14 @@ public void OnPluginStart()
 	aConditions.PushString("COMPETITIVE_LOSER");
 	aConditions.PushString("HEALING_DEBUFF");
 	aConditions.PushString("PASSTIME_PENALTY_DEBUFF");
+	aConditions.PushString("GRAPPLED_TO_PLAYER");
+	aConditions.PushString("GRAPPLED_BY_PLAYER");
 	aConditions.PushString("PARACHUTE_DEPLOYED");
-	aConditions.PushString("NO_COMBAT_SPEED_BOOST");
-	aConditions.PushString("TRANQ_SPY_BOOST");
-	aConditions.PushString("TRANQ_MARKED");
-	aConditions.PushString("ROCKETPACK");
-	aConditions.PushString("ROCKETPACK_PASSENGER");
-	aConditions.PushString("STEALTHED_PHASE");
-	aConditions.PushString("CLIP_OVERLOAD");
-	aConditions.PushString("SPY_CLASS_STEAL");
 	aConditions.PushString("GAS");
+	aConditions.PushString("BURNING_PYRO");
+	aConditions.PushString("ROCKETPACK");
+	aConditions.PushString("LOST_FOOTING");
+	aConditions.PushString("AIR_CURRENT");
 	//Phew
 }
 

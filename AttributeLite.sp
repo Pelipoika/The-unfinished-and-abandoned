@@ -36,12 +36,12 @@ Handle g_hAddItem;
 public void OnPluginStart()
 {
 	RegAdminCmd("addparticle",     Command_AddParticle,    ADMFLAG_BAN, "<player / #userid> <particle ex. \"ghost_pumpkin\"> <attachtype 0 - 6> <attachment name ex. \"head\"> <reset particles 1 or 0> <OPTIONAL entity to attach particle to>");
-	RegAdminCmd("removeparticles", Command_RemoveParticle, ADMFLAG_BAN, "Remove all particles");
+	RegAdminCmd("removeparticles", Command_RemoveParticle, ADMFLAG_BAN, "Remove all particles on self");
 	
 	RegAdminCmd("additem",         Command_AddItem,        ADMFLAG_BAN, "<player / #userid> <hat ex. \"The U-clank-a\">");
 	
-	RegAdminCmd("addattribute",    Command_Add,            ADMFLAG_BAN, "addattribute <player / #userid> <attribute> <value> <duration>");
-	RegAdminCmd("removeattribute", Command_Remove,         ADMFLAG_BAN, "removeattribute <attribute>");
+	RegAdminCmd("addattribute",    Command_Add,            ADMFLAG_BAN, "<player / #userid> <attribute> <value> <duration>");
+	RegAdminCmd("removeattribute", Command_Remove,         ADMFLAG_BAN, "<attribute>");
 	
 	//DispatchParticleEffect(const char *pszParticleName, ParticleAttachment_t iAttachType, CBaseEntity *pEntity, const char *pszAttachmentName, bool bResetAllParticlesOnEntity)
 	StartPrepSDKCall(SDKCall_Static);
@@ -75,7 +75,7 @@ public void OnPluginStart()
 	
 	//CTFPlayer::AddItem(const char* hatname) returns CEconItemSelectionCriteria for some reason(?)
 	StartPrepSDKCall(SDKCall_Player);
-	PrepSDKCall_SetSignature(SDKLibrary_Server, "\x55\x8B\xEC\x83\xEC\x54\x56\x8B\xF1\x8D\x4D\xAC", 12);
+	PrepSDKCall_SetSignature(SDKLibrary_Server, "\x55\x8B\xEC\x83\xEC\x5C\x56\x8B\xF1\x8D\x4D\xA4", 12);
 	PrepSDKCall_AddParameter(SDKType_String, SDKPass_Pointer);	//strHat
 	PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);
 	if ((g_hAddItem = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for CTFPlayer::AddItem signature!"); 

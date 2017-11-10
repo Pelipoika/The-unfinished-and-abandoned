@@ -23,6 +23,7 @@ bool g_bBunnyHop[MAXPLAYERS + 1];
 bool g_bSpectators[MAXPLAYERS + 1];
 bool g_bHeadshots[MAXPLAYERS + 1];
 
+int g_iFOV[MAXPLAYERS + 1];
 int g_iAimType[MAXPLAYERS + 1];
 float g_flAimFOV[MAXPLAYERS + 1];
 
@@ -104,29 +105,29 @@ public void OnPluginStart()
 	g_hHudEnemyAim = CreateHudSynchronizer();
 
 	//CTFWeaponBase::PrimaryAttack()
-	g_hPrimaryAttack = DHookCreate(437, HookType_Entity, ReturnType_Void, ThisPointer_CBaseEntity, CTFWeaponBase_PrimaryAttack);
+	g_hPrimaryAttack = DHookCreate(279, HookType_Entity, ReturnType_Void, ThisPointer_CBaseEntity, CTFWeaponBase_PrimaryAttack);
 	
 	//CTFWeaponBaseGun::GetWeaponID()
 	StartPrepSDKCall(SDKCall_Entity);
-	PrepSDKCall_SetVirtual(372);
+	PrepSDKCall_SetVirtual(371);
 	PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);	//Returns WeaponID
 	if ((g_hGetWeaponID = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for GetWeaponID offset!");
 	
 	//CTFWeaponBaseGun::GetProjectileSpeed()
 	StartPrepSDKCall(SDKCall_Entity);
-	PrepSDKCall_SetVirtual(462);
+	PrepSDKCall_SetVirtual(470);
 	PrepSDKCall_SetReturnInfo(SDKType_Float, SDKPass_Plain);	//Returns SPEED
 	if ((g_hGetProjectileSpeed = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for GetProjectileSpeed offset!");
 	
 	//CTFWeaponBaseGun::GetProjectileGravity()
 	StartPrepSDKCall(SDKCall_Entity);
-	PrepSDKCall_SetVirtual(463);
+	PrepSDKCall_SetVirtual(471);
 	PrepSDKCall_SetReturnInfo(SDKType_Float, SDKPass_Plain);	//Returns SPEED
 	if ((g_hGetProjectileGravity = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for GetProjectileGravity offset!");
 	
 	//CTFWeaponBase::GetMaxClip1()
 	StartPrepSDKCall(SDKCall_Entity);
-	PrepSDKCall_SetVirtual(316);
+	PrepSDKCall_SetVirtual(317);
 	PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);	//Returns iMaxClip
 	if ((g_hGetMaxClip = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for CTFWeaponBase::GetMaxClip1 offset!");
 	
@@ -174,6 +175,7 @@ public void OnClientPutInServer(int client)
 	g_bSpectators[client] = false;
 	g_bHeadshots[client] = false;
 	
+	g_iFOV[client] = 0;
 	g_iAimType[client] = AIM_NEAR;
 	g_flAimFOV[client] = 10.0;
 	
@@ -572,6 +574,8 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	
 	if(g_bAimbot[client])
 	{
+		//SetEntProp(client, Prop_Send, "m_iFOV", 90);
+	
 		if(g_flNextTime[client] <= GetGameTime())
 		{
 			Radar(client, angles);
@@ -580,13 +584,28 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			g_flNextTime[client] = GetGameTime() + UMSG_SPAM_DELAY;
 		}
 		
-		if(!(buttons & IN_ATTACK) && !g_bAutoShoot[client])
-			return Plugin_Continue;
-	
 		int iAw = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
 		if(!IsValidEntity(iAw))
 			return Plugin_Continue;
-
+		
+		if(HasEntProp(iAw, Prop_Data, "m_flRezoomTime"))
+		{		
+			//Instant zoom
+			float m_flRezoomTime = GetEntPropFloat(iAw, Prop_Data, "m_flRezoomTime");
+			float m_flUnzoomTime = GetEntPropFloat(iAw, Prop_Data, "m_flUnzoomTime");
+			
+			if (m_flRezoomTime != -1.0){
+				SetEntPropFloat(iAw, Prop_Data, "m_flRezoomTime", GetGameTime());
+			}
+			
+			if (m_flUnzoomTime != -1.0){
+				SetEntPropFloat(iAw, Prop_Data, "m_flUnzoomTime", GetGameTime());
+			}
+		}
+		
+		if(!(buttons & IN_ATTACK) && !g_bAutoShoot[client])
+			return Plugin_Continue;
+	
 		if(IsPlayerReloading(client) && !(buttons & IN_ATTACK))
 			return Plugin_Continue;
 		
@@ -594,7 +613,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			return Plugin_Continue;
 		
 		float target_point[3]; target_point = SelectBestTargetPos(client, angles);
-		if (FloatCompare(target_point[2], 0.0) == 0)
+		if (target_point[2] == 0)
 			return Plugin_Continue;
 		
 		float eye_to_target[3];
@@ -628,8 +647,6 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	
 	return bChanged ? Plugin_Changed : Plugin_Continue;
 }
-
-
 
 //Do all predictions so we can catch people coming round corners.
 stock float[] SelectBestTargetPos(int client, float playerEyeAngles[3])
@@ -1547,7 +1564,7 @@ stock bool IsReadyToFire(int iWeapon)
 		case TF_WEAPON_SNIPERRIFLE, TF_WEAPON_SNIPERRIFLE_DECAP:
 		{
 			float flDamage = GetEntPropFloat(iWeapon, Prop_Send, "m_flChargedDamage");
-			if (flDamage < 10.0)
+			if (flDamage < 5.0)
 			{
 				return false;
 			}

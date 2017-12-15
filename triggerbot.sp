@@ -109,19 +109,19 @@ public void OnPluginStart()
 	
 	//CTFWeaponBaseGun::GetWeaponID()
 	StartPrepSDKCall(SDKCall_Entity);
-	PrepSDKCall_SetVirtual(371);
+	PrepSDKCall_SetVirtual(372);
 	PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);	//Returns WeaponID
 	if ((g_hGetWeaponID = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for GetWeaponID offset!");
 	
 	//CTFWeaponBaseGun::GetProjectileSpeed()
 	StartPrepSDKCall(SDKCall_Entity);
-	PrepSDKCall_SetVirtual(470);
+	PrepSDKCall_SetVirtual(473);
 	PrepSDKCall_SetReturnInfo(SDKType_Float, SDKPass_Plain);	//Returns SPEED
 	if ((g_hGetProjectileSpeed = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for GetProjectileSpeed offset!");
 	
 	//CTFWeaponBaseGun::GetProjectileGravity()
 	StartPrepSDKCall(SDKCall_Entity);
-	PrepSDKCall_SetVirtual(471);
+	PrepSDKCall_SetVirtual(474);
 	PrepSDKCall_SetReturnInfo(SDKType_Float, SDKPass_Plain);	//Returns SPEED
 	if ((g_hGetProjectileGravity = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for GetProjectileGravity offset!");
 	
@@ -131,6 +131,7 @@ public void OnPluginStart()
 	PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);	//Returns iMaxClip
 	if ((g_hGetMaxClip = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for CTFWeaponBase::GetMaxClip1 offset!");
 	
+	//bip_spine_2
 	//-----------------------------------------------------------------------------
 	// Purpose: Returns index number of a given named bone
 	// Input  : name of a bone
@@ -983,7 +984,8 @@ bool IsPlayerReloading(int client)
 	if (AmmoCur == AmmoMax)
 	    return false;
 	
-	if (GetEntPropFloat(PlayerWeapon, Prop_Send, "m_flLastFireTime") > GetEntPropFloat(PlayerWeapon, Prop_Send, "m_flReloadPriorNextFire"))
+	//if (GetEntPropFloat(PlayerWeapon, Prop_Send, "m_flLastFireTime") > GetEntPropFloat(PlayerWeapon, Prop_Send, "m_flReloadPriorNextFire"))
+	if (GetEntPropFloat(PlayerWeapon, Prop_Send, "m_flNextPrimaryAttack") < GetGameTime())
 	    return false;
 	
 	return true;

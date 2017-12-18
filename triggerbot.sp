@@ -6,7 +6,7 @@
 
 #pragma newdecls required;
 
-Handle g_hHudInfo;
+//Handle g_hHudInfo;
 Handle g_hHudShotCounter;
 Handle g_hHudEnemyAim;
 Handle g_hHudRadar[MAXPLAYERS + 1];
@@ -22,6 +22,7 @@ bool g_bShotCounter[MAXPLAYERS + 1];
 bool g_bBunnyHop[MAXPLAYERS + 1];
 bool g_bSpectators[MAXPLAYERS + 1];
 bool g_bHeadshots[MAXPLAYERS + 1];
+bool g_bInstantReZoom[MAXPLAYERS + 1];
 
 int g_iFOV[MAXPLAYERS + 1];
 int g_iAimType[MAXPLAYERS + 1];
@@ -32,7 +33,6 @@ Handle g_hPrimaryAttack;
 Handle g_hGetWeaponID;
 Handle g_hGetProjectileSpeed;
 Handle g_hGetProjectileGravity;
-Handle g_hGetMaxClip;
 
 Handle g_hLookupBone;
 Handle g_hGetBonePosition;
@@ -100,7 +100,7 @@ public void OnPluginStart()
 		g_hHudRadar[i] = CreateHudSynchronizer();
 	}
 	
-	g_hHudInfo = CreateHudSynchronizer();
+//	g_hHudInfo = CreateHudSynchronizer();
 	g_hHudShotCounter = CreateHudSynchronizer();
 	g_hHudEnemyAim = CreateHudSynchronizer();
 
@@ -124,12 +124,6 @@ public void OnPluginStart()
 	PrepSDKCall_SetVirtual(474);
 	PrepSDKCall_SetReturnInfo(SDKType_Float, SDKPass_Plain);	//Returns SPEED
 	if ((g_hGetProjectileGravity = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for GetProjectileGravity offset!");
-	
-	//CTFWeaponBase::GetMaxClip1()
-	StartPrepSDKCall(SDKCall_Entity);
-	PrepSDKCall_SetVirtual(317);
-	PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);	//Returns iMaxClip
-	if ((g_hGetMaxClip = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for CTFWeaponBase::GetMaxClip1 offset!");
 	
 	//bip_spine_2
 	//-----------------------------------------------------------------------------
@@ -165,6 +159,7 @@ public void OnClientPutInServer(int client)
 	g_bNoSlowDown[client] = false;
 	g_bAllCrits[client] = false;
 	g_bNoSpread[client] = false;
+	g_bInstantReZoom[client] = false;
 	
 	g_bAimbot[client] = false;
 	g_bAutoShoot[client] = false;
@@ -279,6 +274,11 @@ stock void DisplayMiscMenuAtItem(int client, int page = 0)
 		menu.AddItem("2", "Bunny Hop: On");
 	else
 		menu.AddItem("2", "Bunny Hop: Off");
+		
+	if(g_bInstantReZoom[client])
+		menu.AddItem("3", "Instant ReZoom: On");
+	else
+		menu.AddItem("3", "Instant ReZoom: Off");
 		
 	menu.ExitButton = true;
 	menu.ExitBackButton = true;
@@ -427,9 +427,10 @@ public int MenuMiscHandler(Menu menu, MenuAction action, int param1, int param2)
 	{
 		switch(param2)
 		{
-			case 0: g_bNoSlowDown[param1] = !g_bNoSlowDown[param1];
-			case 1: g_bAllCrits[param1]   = !g_bAllCrits[param1];
-			case 2: g_bBunnyHop[param1]   = !g_bBunnyHop[param1];
+			case 0: g_bNoSlowDown[param1]    = !g_bNoSlowDown[param1];
+			case 1: g_bAllCrits[param1]      = !g_bAllCrits[param1];
+			case 2: g_bBunnyHop[param1]      = !g_bBunnyHop[param1];
+			case 3: g_bInstantReZoom[param1] = !g_bInstantReZoom[param1];
 		}
 		
 		DisplayMiscMenuAtItem(param1, GetMenuSelectionPosition());
@@ -573,6 +574,36 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		}
 	}
 	
+	int iAw = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
+	if(!IsValidEntity(iAw))
+		return Plugin_Continue;
+	
+	if(HasEntProp(iAw, Prop_Data, "m_flRezoomTime") && g_bInstantReZoom[client])
+	{		
+		//Instant zoom
+		float m_flRezoomTime = GetEntPropFloat(iAw, Prop_Data, "m_flRezoomTime");
+		float m_flUnzoomTime = GetEntPropFloat(iAw, Prop_Data, "m_flUnzoomTime");
+		
+		if (m_flRezoomTime != -1.0){
+			SetEntPropFloat(iAw, Prop_Data, "m_flRezoomTime", GetGameTime());
+		}
+		
+		if (m_flUnzoomTime != -1.0){
+			SetEntPropFloat(iAw, Prop_Data, "m_flUnzoomTime", GetGameTime());
+		}
+		
+		//SetEntProp(iAw, Prop_Data, "m_bRezoomAfterShot", true);
+	}
+	
+	if(!(buttons & IN_ATTACK) && !g_bAutoShoot[client])
+		return Plugin_Continue;
+
+	if(IsPlayerReloading(client) && !(buttons & IN_ATTACK))
+		return Plugin_Continue;
+	
+	if(!IsReadyToFire(iAw))
+		return Plugin_Continue;
+	
 	if(g_bAimbot[client])
 	{
 		//SetEntProp(client, Prop_Send, "m_iFOV", 90);
@@ -584,34 +615,6 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			
 			g_flNextTime[client] = GetGameTime() + UMSG_SPAM_DELAY;
 		}
-		
-		int iAw = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
-		if(!IsValidEntity(iAw))
-			return Plugin_Continue;
-		
-		if(HasEntProp(iAw, Prop_Data, "m_flRezoomTime"))
-		{		
-			//Instant zoom
-			float m_flRezoomTime = GetEntPropFloat(iAw, Prop_Data, "m_flRezoomTime");
-			float m_flUnzoomTime = GetEntPropFloat(iAw, Prop_Data, "m_flUnzoomTime");
-			
-			if (m_flRezoomTime != -1.0){
-				SetEntPropFloat(iAw, Prop_Data, "m_flRezoomTime", GetGameTime());
-			}
-			
-			if (m_flUnzoomTime != -1.0){
-				SetEntPropFloat(iAw, Prop_Data, "m_flUnzoomTime", GetGameTime());
-			}
-		}
-		
-		if(!(buttons & IN_ATTACK) && !g_bAutoShoot[client])
-			return Plugin_Continue;
-	
-		if(IsPlayerReloading(client) && !(buttons & IN_ATTACK))
-			return Plugin_Continue;
-		
-		if(!IsReadyToFire(iAw))
-			return Plugin_Continue;
 		
 		float target_point[3]; target_point = SelectBestTargetPos(client, angles);
 		if (target_point[2] == 0)
@@ -978,11 +981,10 @@ bool IsPlayerReloading(int client)
 	if (GetPlayerWeaponSlot(client, TFWeaponSlot_Melee) == PlayerWeapon)
 	    return false;
 	
+	//Can't fire with 0 ammo
 	int AmmoCur = GetEntProp(PlayerWeapon, Prop_Send, "m_iClip1");
-	int AmmoMax = SDKCall(g_hGetMaxClip, PlayerWeapon);
-	
-	if (AmmoCur == AmmoMax)
-	    return false;
+	if(AmmoCur <= 0)
+		return false;
 	
 	//if (GetEntPropFloat(PlayerWeapon, Prop_Send, "m_flLastFireTime") > GetEntPropFloat(PlayerWeapon, Prop_Send, "m_flReloadPriorNextFire"))
 	if (GetEntPropFloat(PlayerWeapon, Prop_Send, "m_flNextPrimaryAttack") < GetGameTime())

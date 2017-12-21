@@ -23,6 +23,8 @@ bool g_bBunnyHop[MAXPLAYERS + 1];
 bool g_bSpectators[MAXPLAYERS + 1];
 bool g_bHeadshots[MAXPLAYERS + 1];
 bool g_bInstantReZoom[MAXPLAYERS + 1];
+bool g_bEnemyAimWarning[MAXPLAYERS + 1];
+bool g_bRadar[MAXPLAYERS + 1];
 
 int g_iFOV[MAXPLAYERS + 1];
 int g_iAimType[MAXPLAYERS + 1];
@@ -160,6 +162,8 @@ public void OnClientPutInServer(int client)
 	g_bAllCrits[client] = false;
 	g_bNoSpread[client] = false;
 	g_bInstantReZoom[client] = false;
+	g_bEnemyAimWarning[client] = false;
+	g_bRadar[client] = false;
 	
 	g_bAimbot[client] = false;
 	g_bAutoShoot[client] = false;
@@ -299,6 +303,16 @@ stock void DisplayVisualsMenuAtItem(int client, int page = 0)
 		menu.AddItem("1", "Spectator List: On");
 	else
 		menu.AddItem("1", "Spectator List: Off");
+		
+	if(g_bRadar[client])
+		menu.AddItem("2", "Radar: On");
+	else
+		menu.AddItem("2", "Radar: Off");
+		
+	if(g_bEnemyAimWarning[client])
+		menu.AddItem("3", "Enemy Aim Warning: On");
+	else
+		menu.AddItem("3", "Enemy Aim Warning: Off");
 	
 	menu.ExitButton = true;
 	menu.ExitBackButton = true;
@@ -342,7 +356,9 @@ public int MenuVisualsHandler(Menu menu, MenuAction action, int param1, int para
 				g_iShots[param1]    = 0;
 				g_iShotsHit[param1] = 0;				
 			}
-			case 1: g_bSpectators[param1]  = !g_bSpectators[param1];
+			case 1: g_bSpectators[param1]       = !g_bSpectators[param1];
+			case 2: g_bRadar[param1]            = !g_bRadar[param1];
+			case 3: g_bEnemyAimWarning[param1]  = !g_bEnemyAimWarning[param1];
 		}
 		
 		DisplayVisualsMenuAtItem(param1, GetMenuSelectionPosition());
@@ -574,6 +590,17 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		}
 	}
 	
+	if(g_flNextTime[client] <= GetGameTime())
+	{
+		if(g_bRadar[client])
+			Radar(client, angles);
+			
+		if(g_bEnemyAimWarning[client])
+			EnemyIsAimingAtYou(client);
+		
+		g_flNextTime[client] = GetGameTime() + UMSG_SPAM_DELAY;
+	}
+
 	int iAw = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
 	if(!IsValidEntity(iAw))
 		return Plugin_Continue;
@@ -607,17 +634,9 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	if(g_bAimbot[client])
 	{
 		//SetEntProp(client, Prop_Send, "m_iFOV", 90);
-	
-		if(g_flNextTime[client] <= GetGameTime())
-		{
-			Radar(client, angles);
-			EnemyIsAimingAtYou(client);
-			
-			g_flNextTime[client] = GetGameTime() + UMSG_SPAM_DELAY;
-		}
 		
 		float target_point[3]; target_point = SelectBestTargetPos(client, angles);
-		if (target_point[2] == 0)
+		if (FloatAbs(target_point[2]) == 0.0)
 			return Plugin_Continue;
 		
 		float eye_to_target[3];

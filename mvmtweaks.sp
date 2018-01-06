@@ -2,6 +2,7 @@
 #include <morecolors>
 #include <tf2>
 #include <tf2_stocks>
+#include <basecomm>
 
 #pragma newdecls required
 
@@ -22,7 +23,7 @@ public Plugin myinfo =
 
 public void OnClientPutInServer(int client)
 {
-	g_bCanVote[client] = false;
+	g_bCanVote[client] = true;
 }
 
 public void OnPluginStart()
@@ -35,6 +36,85 @@ public void OnPluginStart()
 	HookEvent("player_team", Event_PlayerTeam, EventHookMode_Post);
 	HookEvent("mvm_wave_complete", WaveCompleted);
 	HookEvent("mvm_wave_failed", WaveCompleted);
+	
+	RegAdminCmd("sm_endrussians", Bye, ADMFLAG_BAN);
+	
+	HookUserMessage(GetUserMessageId("VGUIMenu"), VGUIMenu, true);
+}
+
+public Action VGUIMenu(UserMsg msg_id, BfRead msg, const int[] players, int playersNum, bool reliable, bool init)
+{	
+	if(playersNum > 1)
+		return Plugin_Continue;
+		
+	if(IsFakeClient(players[0]))
+		return Plugin_Continue;
+
+	char string1[PLATFORM_MAX_PATH];
+	msg.ReadString(string1, PLATFORM_MAX_PATH);
+	
+	int bShow = msg.ReadByte();
+	//int byte2 = msg.ReadByte();
+	msg.ReadByte();
+	
+	char string2[PLATFORM_MAX_PATH];
+	msg.ReadString(string2, PLATFORM_MAX_PATH);
+	
+	char string3[PLATFORM_MAX_PATH];
+	msg.ReadString(string3, PLATFORM_MAX_PATH);
+	
+	//PrintToServer("\"%s\" bShow %i %i \"%s\" \"%s\" %N", string1, bShow, byte2, string2, string3, players[0]);
+	
+	if(StrEqual(string1, "info") && StrContains(string3, "#TF_Welcome") != -1)
+	{
+		ClientCommand(players[0], "autoteam");
+		
+		//PrintToServer(">Block %s", string1);
+		
+		RequestFrame(SendClassSelect, GetClientUserId(players[0]));
+		
+		return Plugin_Handled;
+	}
+	
+	return Plugin_Continue;
+}
+
+public void SendClassSelect(int userid)
+{
+	int client = GetClientOfUserId(userid);
+	if(client == 0)
+		return;
+	
+	ShowVGUIPanel(client, TF2_GetClientTeam(client) == TFTeam_Red ? "class_red" : "class_blue");
+}
+
+public Action Bye(int client, int args)
+{
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		if(!IsClientInGame(i))
+			continue;
+		
+		QueryClientConVar(i, "cl_language", ConvarQueryResult, client);
+	}	
+
+	return Plugin_Handled;
+}
+
+public void ConvarQueryResult(QueryCookie cookie, int client, ConVarQueryResult result, const char[] cvarName, const char[] cvarValue, any value)
+{
+	int iIssuer = value;
+	
+	if(StrEqual(cvarValue, "russian") 
+	|| StrEqual(cvarValue, "polish"))
+	{
+		CPrintToChat(iIssuer, "%N, is a {red}communist faggot AND HAS BEEN {fullred}MUTED!", client);
+		BaseComm_SetClientMute(client, true);
+	}
+	else
+	{
+		CPrintToChat(iIssuer, "%N - {lime}%s{default}, is a {lime}okay i guess", client, cvarValue);
+	}
 }
 
 void DifficultyScalingChanged(ConVar convar, const char[] oldValue, const char[] newValue)
@@ -162,13 +242,13 @@ public Action Event_PlayerTeam(Event event, const char[] name, bool dontBroadcas
 			{
 				case 1: 
 				{
-					cvarHealth.SetFloat(0.166);
-					cvarDamage.SetFloat(0.166);
+					cvarHealth.SetFloat(0.5);
+					cvarDamage.SetFloat(0.5);
 				}
 				case 2:	
 				{
-					cvarHealth.SetFloat(0.333);
-					cvarDamage.SetFloat(0.333);
+					cvarHealth.SetFloat(0.5);
+					cvarDamage.SetFloat(0.5);
 				}
 				case 3: 
 				{

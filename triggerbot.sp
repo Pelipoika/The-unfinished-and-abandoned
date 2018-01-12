@@ -1665,6 +1665,17 @@ stock float GetProjectileSpeed(int iWeapon)
 		}
 	}
 	
+	//Rocket Specialist
+	Address attrib = TF2Attrib_GetByDefIndex(iWeapon, 488);
+	if(attrib != Address_Null)
+	{
+		//NASA Math
+		float flMultiplier = TF2Attrib_GetValue(attrib);		
+		flProjectileSpeed += flProjectileSpeed * (1.15 * flMultiplier);
+		
+		//PrintToServer("Rocket Specialist %f -> %f", flMultiplier, flProjectileSpeed);
+	}
+	
 	return flProjectileSpeed;
 }
 

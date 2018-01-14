@@ -11,6 +11,7 @@ bool g_bAutoShoot[MAXPLAYERS + 1];
 bool g_bSilentAim[MAXPLAYERS + 1];
 bool g_bBunnyHop[MAXPLAYERS + 1];
 bool g_bHeadshots[MAXPLAYERS + 1];
+bool g_bRecoilControl[MAXPLAYERS + 1];
 
 #define UMSG_SPAM_DELAY 0.1
 float g_flNextTime[MAXPLAYERS + 1];
@@ -67,6 +68,7 @@ public void OnClientPutInServer(int client)
 	g_bAimbot[client] = false;
 	g_bAutoShoot[client] = false;
 	g_bSilentAim[client] = false;
+	g_bRecoilControl[client] = false;
 	
 	g_bBunnyHop[client] = false;
 	g_bHeadshots[client] = false;
@@ -103,7 +105,7 @@ stock void DisplayAimbotMenuAtItem(int client, int page = 0)
 	if(g_bAimbot[client])
 		menu.AddItem("0", "Aimbot: On");
 	else
-		menu.AddItem("0", "Aimbot: Off");
+		menu.AddItem("0", "Aimbot: Off");	
 	
 	if(g_bAutoShoot[client])
 		menu.AddItem("1", "Auto Shoot: On");
@@ -119,6 +121,11 @@ stock void DisplayAimbotMenuAtItem(int client, int page = 0)
 		menu.AddItem("3", "Headshots only: On");
 	else
 		menu.AddItem("3", "Headshots only: Off");
+		
+	if(g_bRecoilControl[client])
+		menu.AddItem("4", "Recoil Assist: On");
+	else
+		menu.AddItem("4", "Recoil Assist: Off");
 	
 	menu.ExitButton = true;
 	menu.ExitBackButton = true;
@@ -156,9 +163,18 @@ public int MenuAimbotHandler(Menu menu, MenuAction action, int param1, int param
 					SetEntProp(param1, Prop_Data, "m_bPredictWeapons", true);
 				}
 			}
-			case 1: g_bAutoShoot[param1]  = !g_bAutoShoot[param1];
-			case 2: g_bSilentAim[param1]  = !g_bSilentAim[param1];
-			case 3: g_bHeadshots[param1]  = !g_bHeadshots[param1];
+			case 1: g_bAutoShoot[param1]     = !g_bAutoShoot[param1];
+			case 2: g_bSilentAim[param1]     = !g_bSilentAim[param1];
+			case 3: g_bHeadshots[param1]     = !g_bHeadshots[param1];
+			case 4: 
+			{
+				g_bRecoilControl[param1] = !g_bRecoilControl[param1];
+				
+				if(g_bRecoilControl[param1])
+					SendConVarValue(param1, FindConVar("weapon_recoil_scale"), "0");
+				else
+					SendConVarValue(param1, FindConVar("weapon_recoil_scale"), "2");
+			}
 		}
 		
 		DisplayAimbotMenuAtItem(param1, GetMenuSelectionPosition());
@@ -215,8 +231,6 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	if(IsFakeClient(client) || !IsPlayerAlive(client)) 
 		return Plugin_Continue;	
 	
-//	PrintCenterText(client, "%f %f %f", angles[0], angles[1], angles[2]);
-	
 	bool bChanged = false;
 	
 	if(g_bBunnyHop[client])
@@ -226,6 +240,26 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			int nOldButtons = GetEntProp(client, Prop_Data, "m_nOldButtons");
 			SetEntProp(client, Prop_Data, "m_nOldButtons", (nOldButtons &= ~(IN_JUMP|IN_DUCK)));
 		}
+	}
+	
+	if(g_bRecoilControl[client])
+	{
+		float vPunch[3]; vPunch = GetAimPunchAngle(client);
+		ScaleVector(vPunch, -2.0);
+		
+		AddVectors(angles, vPunch, angles);
+		
+		if(!g_bSilentAim[client]) {
+			TeleportEntity(client, NULL_VECTOR, angles, NULL_VECTOR);
+		}
+		
+		//SetEntPropVector(client, Prop_Send, "m_viewPunchAngle", view_as<float>({0.0, 0.0, 0.0}));
+		//SetEntPropVector(client, Prop_Send, "m_aimPunchAngle", view_as<float>({0.0, 0.0, 0.0}));
+		//SetEntPropVector(client, Prop_Send, "m_aimPunchAngleVel", view_as<float>({0.0, 0.0, 0.0}));
+		
+		//PrintToServer("%f %f %f", angles[0], angles[1], angles[2]);
+		
+		bChanged = true;
 	}
 	
 	if(g_bAimbot[client])

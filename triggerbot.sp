@@ -25,6 +25,8 @@ bool g_bHeadshots[MAXPLAYERS + 1];
 bool g_bInstantReZoom[MAXPLAYERS + 1];
 bool g_bEnemyAimWarning[MAXPLAYERS + 1];
 bool g_bRadar[MAXPLAYERS + 1];
+bool g_bPlayersOutline[MAXPLAYERS + 1];
+bool g_bBuildingOutline[MAXPLAYERS + 1];
 
 int g_iFOV[MAXPLAYERS + 1];
 int g_iAimType[MAXPLAYERS + 1];
@@ -102,6 +104,8 @@ public void OnPluginStart()
 		g_hHudRadar[i] = CreateHudSynchronizer();
 	}
 	
+	HookEvent("player_spawn", Event_PlayerSpawn, EventHookMode_Post);
+	
 //	g_hHudInfo = CreateHudSynchronizer();
 	g_hHudShotCounter = CreateHudSynchronizer();
 	g_hHudEnemyAim = CreateHudSynchronizer();
@@ -175,6 +179,9 @@ public void OnClientPutInServer(int client)
 	g_bSpectators[client] = false;
 	g_bHeadshots[client] = false;
 	
+	g_bPlayersOutline[client] = false;
+	g_bBuildingOutline[client] = false;
+
 	g_iFOV[client] = 0;
 	g_iAimType[client] = AIM_NEAR;
 	g_flAimFOV[client] = 10.0;
@@ -313,6 +320,16 @@ stock void DisplayVisualsMenuAtItem(int client, int page = 0)
 		menu.AddItem("3", "Enemy Aim Warning: On");
 	else
 		menu.AddItem("3", "Enemy Aim Warning: Off");
+		
+	if(g_bPlayersOutline[client])
+		menu.AddItem("4", "Players Outline: On");
+	else
+		menu.AddItem("4", "Players Outline: Off");
+		
+	if(g_bBuildingOutline[client])
+		menu.AddItem("5", "Buildings Outline: On");
+	else
+		menu.AddItem("5", "Buildings Outline: Off");
 	
 	menu.ExitButton = true;
 	menu.ExitBackButton = true;
@@ -359,6 +376,42 @@ public int MenuVisualsHandler(Menu menu, MenuAction action, int param1, int para
 			case 1: g_bSpectators[param1]       = !g_bSpectators[param1];
 			case 2: g_bRadar[param1]            = !g_bRadar[param1];
 			case 3: g_bEnemyAimWarning[param1]  = !g_bEnemyAimWarning[param1];
+			case 4: 
+			{
+				g_bPlayersOutline[param1] = !g_bPlayersOutline[param1];
+				
+				if(g_bPlayersOutline[param1])
+				{
+					TF2_CreateGlowToAll("PlayersOutline");	
+				}
+				else
+				{
+					//Kill All Client Glow
+					TF2_KillAllGlow("PlayersOutline");
+					
+					//Regerenate all glow
+					TF2_CreateGlowToAll("PlayersOutline");				
+				}
+			}
+			case 5: 
+			{
+				g_bBuildingOutline[param1] = !g_bBuildingOutline[param1];
+				
+				if(g_bBuildingOutline[param1])
+				{
+					TF2_CreateGlowToAll("BuildingsOutline");	
+				}
+				else
+				{
+					//Kill All Building Glow
+					TF2_KillAllGlow("BuildingsOutline");
+					
+					//Regerenate all glow
+					TF2_CreateGlowToAll("BuildingsOutline");				
+				}
+			}
+			
+			
 		}
 		
 		DisplayVisualsMenuAtItem(param1, GetMenuSelectionPosition());
@@ -372,6 +425,7 @@ public int MenuVisualsHandler(Menu menu, MenuAction action, int param1, int para
 		delete menu;
 	}
 }
+
 
 public int MenuAimbotHandler(Menu menu, MenuAction action, int param1, int param2)
 {
@@ -477,6 +531,153 @@ public int MenuLegitnessHandler(Menu menu, MenuAction action, int param1, int pa
 		delete menu;
 	}
 }
+
+//Players Outline	-{
+	
+void TF2_CreateGlowToAll(char[] strTargetname)	
+{
+	if(StrEqual(strTargetname, "PlayersOutline"))
+	{
+		for (int i = 1; i <= MaxClients; i++) 	if (IsClientInGame(i))
+		{
+			//Create Glow on All client
+			TF2_CreateGlow(i, strTargetname);
+		}
+	}
+	else if(StrEqual(strTargetname, "BuildingsOutline"))
+	{
+		int index = -1;
+		while ((index = FindEntityByClassname(index, "obj_sentrygun")) != -1)
+		{
+			TF2_CreateGlow(index, strTargetname);
+		}
+		
+		index = -1;
+		while ((index = FindEntityByClassname(index, "obj_dispenser")) != -1)
+		{
+			TF2_CreateGlow(index, strTargetname);
+		}
+		
+		index = -1;
+		while ((index = FindEntityByClassname(index, "obj_teleporter")) != -1)
+		{
+			TF2_CreateGlow(index, strTargetname);
+		}
+	}
+	
+}
+
+void TF2_KillAllGlow(char[] strTargetname)
+{
+	int index = -1;
+	while ((index = FindEntityByClassname(index, "tf_glow")) != -1)
+	{
+		char strName[64];
+		GetEntPropString(index, Prop_Data, "m_iName", strName, sizeof(strName));
+		if(StrEqual(strName, strTargetname))
+		{
+			AcceptEntityInput(index, "Kill");
+		}
+	}
+}	
+	
+stock int TF2_CreateGlow(int iEnt, char[] strTargetname)
+{
+	char strGlowColor[18];
+	switch(GetEntProp(iEnt, Prop_Send, "m_iTeamNum"))
+	{
+		case (2):Format(strGlowColor, sizeof(strGlowColor), "%i %i %i %i", 255, 51, 51, 255);
+		case (3):Format(strGlowColor, sizeof(strGlowColor), "%i %i %i %i", 153, 194, 216, 255);
+		default: return -1;
+	}
+	
+	char oldEntName[64];
+	GetEntPropString(iEnt, Prop_Data, "m_iName", oldEntName, sizeof(oldEntName));
+	
+	char strName[126], strClass[64];
+	GetEntityClassname(iEnt, strClass, sizeof(strClass));
+	Format(strName, sizeof(strName), "%s%i", strClass, iEnt);
+	DispatchKeyValue(iEnt, "targetname", strName);
+
+	int ent = CreateEntityByName("tf_glow");
+	if (IsValidEntity(ent))
+	{
+		SDKHook(ent, SDKHook_SetTransmit, OnSetTransmit);
+		DispatchKeyValue(ent, "targetname", strTargetname);
+		DispatchKeyValue(ent, "target", strName);
+		DispatchKeyValue(ent, "Mode", "0");
+		DispatchKeyValue(ent, "GlowColor", strGlowColor);	
+		DispatchSpawn(ent);
+
+		AcceptEntityInput(ent, "Enable");
+		
+		//Change name back to old name because we don't need it anymore.
+		SetEntPropString(iEnt, Prop_Data, "m_iName", oldEntName);
+		return ent;
+	}
+	return -1;
+}
+
+public Action OnSetTransmit(int entity, int client) 
+{
+	SetEdictFlags(entity, GetEdictFlags(entity) & ~FL_EDICT_ALWAYS);
+	
+	char strName[64];
+	GetEntPropString(entity, Prop_Data, "m_iName", strName, sizeof(strName));
+	if(StrEqual(strName, "PlayersOutline"))
+	{
+		if (g_bPlayersOutline[client])
+			return Plugin_Continue;
+	}
+	else if(StrEqual(strName, "BuildingsOutline"))
+	{
+		if (g_bBuildingOutline[client])
+			return Plugin_Continue;
+	}
+	
+	return Plugin_Handled;
+}  
+
+stock bool TF2_HasGlow(int iEnt)
+{
+	int index = -1;
+	while ((index = FindEntityByClassname(index, "tf_glow")) != -1)
+	{
+		if (GetEntPropEnt(index, Prop_Send, "m_hTarget") == iEnt)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+public void OnPluginEnd()
+{
+	int index = -1;
+	while ((index = FindEntityByClassname(index, "tf_glow")) != -1)
+	{
+		char strName[64];
+		GetEntPropString(index, Prop_Data, "m_iName", strName, sizeof(strName));
+		if(StrEqual(strName, "PlayersOutline") || StrEqual(strName, "BuildingsOutline"))
+		{
+			AcceptEntityInput(index, "Kill");
+		}
+	}
+}
+
+public Action Event_PlayerSpawn(Handle event, const char[] name, bool dontBroadcast)
+{
+	int client = GetClientOfUserId(GetEventInt(event, "userid"));
+	
+	//Create the outline if don't have outline
+	if(!TF2_HasGlow(client))
+	{
+		TF2_CreateGlow(client, "PlayersOutline");
+	}
+}
+
+//		}-
+
 
 public Action TF2_CalcIsAttackCritical(int client, int weapon, char[] weaponname, bool &result)
 {

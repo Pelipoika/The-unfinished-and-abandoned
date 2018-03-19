@@ -547,19 +547,7 @@ void TF2_CreateGlowToAll(char[] strTargetname)
 	else if(StrEqual(strTargetname, "BuildingsOutline"))
 	{
 		int index = -1;
-		while ((index = FindEntityByClassname(index, "obj_sentrygun")) != -1)
-		{
-			TF2_CreateGlow(index, strTargetname);
-		}
-		
-		index = -1;
-		while ((index = FindEntityByClassname(index, "obj_dispenser")) != -1)
-		{
-			TF2_CreateGlow(index, strTargetname);
-		}
-		
-		index = -1;
-		while ((index = FindEntityByClassname(index, "obj_teleporter")) != -1)
+		while ((index = FindEntityByClassname(index, "obj_*")) != -1)
 		{
 			TF2_CreateGlow(index, strTargetname);
 		}

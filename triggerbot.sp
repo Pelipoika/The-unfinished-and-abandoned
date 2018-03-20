@@ -107,7 +107,7 @@ public void OnPluginStart()
 	}
 	
 	HookEvent("player_spawn", Event_PlayerSpawn, EventHookMode_Post);
-	
+
 //	g_hHudInfo = CreateHudSynchronizer();
 	g_hHudShotCounter = CreateHudSynchronizer();
 	g_hHudEnemyAim = CreateHudSynchronizer();
@@ -683,18 +683,57 @@ public Action Event_PlayerSpawn(Handle event, const char[] name, bool dontBroadc
 {
 	int client = GetClientOfUserId(GetEventInt(event, "userid"));
 	
-	//Create the outline if don't have outline
-	if(!TF2_HasGlow(client))
+	//Remomve Client Glow
+	if(TF2_HasGlow(client))
 	{
-		TF2_CreateGlow(client, "PlayersOutline");
+		int index = -1;
+		while ((index = FindEntityByClassname(index, "tf_glow")) != -1)
+		{
+			char strName[64];
+			GetEntPropString(index, Prop_Data, "m_iName", strName, sizeof(strName));
+			if(StrEqual(strName, "PlayersOutline"))
+			{
+				char strTargetName[32];
+    			GetEntPropString(index, Prop_Data, "m_target", strTargetName, sizeof(strTargetName));
+    			
+    			char strTarget[32];
+    			Format(strTarget, sizeof(strTarget), "player%i", client);
+    	
+    			if(StrEqual(strTargetName, strTarget))
+				{
+					AcceptEntityInput(index, "Kill");
+				}
+			}
+		}
 	}
+	
+	//Create glow for client
+	TF2_CreateGlow(client, "PlayersOutline");
+}
+
+public void OnEntityCreated(int entity, const char[] classname)
+{
+	if (StrContains(classname, "obj_") != -1)
+	{
+		SDKHook(entity, SDKHook_SpawnPost, Hook_OnObjSpawn);
+	}
+}
+
+public void Hook_OnObjSpawn(int entity)
+{  
+	RequestFrame(Frame_CreateGlowOnEntity, entity);
+} 
+
+public void Frame_CreateGlowOnEntity(int entity)
+{
+	TF2_CreateGlow(entity, "BuildingsOutline");
 }
 
 //		}-
 
 
 public Action TF2_CalcIsAttackCritical(int client, int weapon, char[] weaponname, bool &result)
-{
+{	
 	if(g_bAllCrits[client])
 	{
 		result = true;

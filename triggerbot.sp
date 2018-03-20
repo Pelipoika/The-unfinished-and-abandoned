@@ -187,7 +187,7 @@ public void OnClientPutInServer(int client)
 
 	g_iFOV[client] = 0;
 	g_iAimType[client] = AIM_NEAR;
-	g_flAimFOV[client] = 10.0;
+	g_flAimFOV[client] = 2.0;
 	
 	g_bShot[client] = false;
 	g_iShots[client] = 0;
@@ -236,7 +236,7 @@ stock void DisplayAimbotMenuAtItem(int client, int page = 0)
 		menu.AddItem("1", "Aim Type: FOV");
 	
 	char FOV[64];
-	Format(FOV, sizeof(FOV), "Aim FOV: %.0f", g_flAimFOV[client]);
+	Format(FOV, sizeof(FOV), "Aim FOV: %.1f", g_flAimFOV[client]);
 	menu.AddItem("2", FOV);
 
 	if(g_bAutoShoot[client])
@@ -429,24 +429,29 @@ public int MenuVisualsHandler(Menu menu, MenuAction action, int param1, int para
 	}
 }
 
-public void OnClientSayCommand_Post(int client, const char[] command, const char[] sArgs)		
+public Action OnClientSayCommand(int client, const char[] command, const char[] sArgs)		
 {		
 	if(!g_bListenForFOV[client])		
-		return;		
+		return Plugin_Continue;		
 	
 	float flFov = StringToFloat(sArgs);		
 	
 	if(flFov > 180.0)		
 		flFov = 180.0;		
 	
-	if(flFov < 1.0)		
-		flFov = 1.0;		
+	if(flFov < 0.0)		
+		flFov = 0.0;
 	
 	g_flAimFOV[client] = flFov;		
 	
 	PrintToChat(client, "Aimbot FOV set to: %.1f", flFov);		
 	
-	g_bListenForFOV[client] = false;		
+	g_bListenForFOV[client] = false;
+	
+	DisplayAimbotMenuAtItem(client);
+	
+	//Block sending value to chat.
+	return Plugin_Handled;
 }
 
 public int MenuAimbotHandler(Menu menu, MenuAction action, int param1, int param2)
@@ -694,12 +699,12 @@ public Action Event_PlayerSpawn(Handle event, const char[] name, bool dontBroadc
 			if(StrEqual(strName, "PlayersOutline"))
 			{
 				char strTargetName[32];
-    			GetEntPropString(index, Prop_Data, "m_target", strTargetName, sizeof(strTargetName));
-    			
-    			char strTarget[32];
-    			Format(strTarget, sizeof(strTarget), "player%i", client);
-    	
-    			if(StrEqual(strTargetName, strTarget))
+				GetEntPropString(index, Prop_Data, "m_target", strTargetName, sizeof(strTargetName));
+				
+				char strTarget[32];
+				Format(strTarget, sizeof(strTarget), "player%i", client);
+		
+				if(StrEqual(strTargetName, strTarget))
 				{
 					AcceptEntityInput(index, "Kill");
 				}
@@ -891,7 +896,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		
 		int iTarget = -1;
 		float target_point[3]; target_point = SelectBestTargetPos(client, angles, iTarget);		
-		if (target_point[2] == 0 || iTarget == -1)
+		if (target_point[2] == 0.0 || iTarget == -1)
 			return Plugin_Continue;
 			
 		float eye_to_target[3];
@@ -936,7 +941,6 @@ stock float[] SelectBestTargetPos(int client, float playerEyeAngles[3], int &iBe
 	float flBestDistance = 99999.0;
 	float best_target_point[3];
 	
-	float flBestDot = 1.0;
 	for (int i = 1; i <= MaxClients; i++)
 	{
 		if(i == client)
@@ -970,7 +974,7 @@ stock float[] SelectBestTargetPos(int client, float playerEyeAngles[3], int &iBe
 		
 			if(GetEntityFlags(i) & FL_ONGROUND 
 			&& IsExplosiveProjectileWeapon(GetActiveWeapon(client)) 
-			&& IsPointVisible(client, i, GetEyePosition(client), vecAbs))
+			&& IsPointVisible(client, playerEyeAngles, i, vecAbs))
 			{
 				//Aim at feet with explosive weapons.
 				target_point = vecAbs;
@@ -983,12 +987,12 @@ stock float[] SelectBestTargetPos(int client, float playerEyeAngles[3], int &iBe
 			int iBone = FindBestHitbox(client, playerEyeAngles, i);
 			if(iBone == -1)
 				continue;
-				
+			
 			float vNothing[3];
 			GetBonePosition(i, iBone, target_point, vNothing);
 		}
 		
-		if(IsPointVisible(client, i, GetEyePosition(client), target_point))
+		if(IsPointVisible(client, playerEyeAngles, i, target_point))
 		{
 			float flDistance = GetVectorDistance(target_point, best_target_point);
 			
@@ -1486,29 +1490,13 @@ stock void FixSilentAimMovement(int client, float vel[3], float angles[3], float
 stock int FindBestHitbox(int client, float playerEyeAngles[3], int target)
 {
 	int iBestHitBox = g_bHeadshots[client] ? LookupBone(target, "bip_head") : LookupBone(target, "bip_pelvis");
-	int iActiveWeapon = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
 	
-	TFClassType playerClass = TF2_GetPlayerClass(client);
-	
-	if(iActiveWeapon == GetPlayerWeaponSlot(client, TFWeaponSlot_Primary))
-	{
-		//If they're a sniper and zoomed in or a spy..
-		if (((TF2_IsPlayerInCondition(client, TFCond_Zoomed) || SDKCall(g_hGetWeaponID, iActiveWeapon) == TF_WEAPON_COMPOUND_BOW) && playerClass == TFClass_Sniper) || playerClass == TFClass_Spy)
-		{
-			//Aim at head
-			iBestHitBox = LookupBone(target, "bip_head");
-		}
-	}
-	
-	if(iBestHitBox != -1 && IsBoneVisible(client, playerEyeAngles, target, iBestHitBox))
-	{
-		return iBestHitBox;
-	}
-	else if(!g_bHeadshots[client])
+	//Not headshots only
+	if(!g_bHeadshots[client])
 	{
 		iBestHitBox = -1;
 		
-		for (int i = 0; i < 128; i++)	//Replace with GetNumBones eventually.
+		for (int i = 0; i < 64; i++) //Replace with GetNumBones eventually.
 		{
 			if(IsBoneVisible(client, playerEyeAngles, target, i))
 			{
@@ -1517,6 +1505,9 @@ stock int FindBestHitbox(int client, float playerEyeAngles[3], int target)
 			}
 		}
 	}
+	
+	if(iBestHitBox < 0 || !IsBoneVisible(client, playerEyeAngles, target, iBestHitBox))
+		return -1;
 	
 	return iBestHitBox;
 }
@@ -1531,53 +1522,49 @@ stock void GetBonePosition(int iEntity, int iBone, float origin[3], float angles
 	SDKCall(g_hGetBonePosition, iEntity, iBone, origin, angles);
 }
 
-stock bool IsBoneVisible(int player, float playerEyeAngles[3], int target, int bone)
-{
-	float vecEyePosition[3];
-	GetClientEyePosition(player, vecEyePosition);
-
-	float vNothing[3], vOrigin[3];
-	GetBonePosition(target, bone, vOrigin, vNothing);
+//client = me
+//target = them
+//vecEyeAng = passthrough value from OnPlayerRunCmd
+stock bool IsBoneVisible(int client, float vecEyeAng[3], int target, int bone)
+{	
+	//Bone origin and angles
+	float vBoneAngles[3], vBoneOrigin[3];
+	GetBonePosition(target, bone, vBoneOrigin, vBoneAngles);
 	
-	if(g_iAimType[player] == AIM_FOV && target > 0 && target <= MaxClients)
+	return IsPointVisible(client, vecEyeAng, target, vBoneOrigin);
+}
+
+stock bool IsPointVisible(int client, float vecEyeAng[3], int target, float end[3])
+{
+	if(g_iAimType[client] == AIM_FOV)
 	{
-		float vTEyeAngles[3];
-		GetClientEyeAngles(target, vTEyeAngles);
+		//Our eye forward vector
+		float vForward[3]; GetAngleVectors(vecEyeAng, vForward, NULL_VECTOR, NULL_VECTOR);
 		
-		float vTargetAngles[3];
+		//Direction vector from bone position to our eye position
+		float vToTargetBone[3];
+		SubtractVectors(end, GetEyePosition(client), vToTargetBone);
 		
-		// Get the angle needed to aim at the enemy
-		SubtractVectors(vecEyePosition, vOrigin, vTargetAngles);
+		//Normalize it.
+		NormalizeVector(vToTargetBone, vToTargetBone);
 		
-		float flFov = angleFOV(playerEyeAngles, vecEyePosition, vOrigin);
+		//Dot product to bone
+		float flDot = GetVectorDotProduct(vForward, vToTargetBone);
 		
-		return (flFov <= g_flAimFOV[player]) && IsPointVisible(player, target, vecEyePosition, vOrigin);
+		//Aimbot FOV max Dot
+		float flMaxDot = 1.0 - (g_flAimFOV[client] / 180.0);
+		
+		bool bCanTarget = flDot >= flMaxDot;
+		
+	//	PrintToServer("%N | flDot %f / flMaxDot %f valid | %s", target, flDot, flMaxDot, bCanTarget ? "YES" : "NO");
+		
+		//Out of aimbot FOV
+		if(!bCanTarget)
+			return false;
 	}
 	
-	return IsPointVisible(player, target, vecEyePosition, vOrigin);
-}
-
-float angleFOV(float angle[3], float src[3], float dest[3])
-{
-	float f[3];
-	float d[3];
-	
-	GetAngleVectors(angle, f, NULL_VECTOR, NULL_VECTOR);
-	
-	SubtractVectors(dest, src, d);
-	NormalizeVector(d, d);
-	
-	return Max(angleBetween(f, d), 0.0);
-}
-
-float angleBetween(float f[3], float v[3])
-{
-	return RadToDeg(ArcCosine(GetVectorDotProduct(f, v)));
-}  
-
-stock bool IsPointVisible(int looker, int target, float start[3], float point[3])
-{
-	TR_TraceRayFilter(start, point, MASK_SHOT|CONTENTS_GRATE, RayType_EndPoint, AimTargetFilter, looker);
+	//Trace from our eye pos to endpos
+	TR_TraceRayFilter(GetEyePosition(client), end, MASK_SHOT|CONTENTS_GRATE, RayType_EndPoint, AimTargetFilter, client);
 	if(!TR_DidHit() || TR_GetEntityIndex() == target)
 	{
 		return true;
@@ -1623,7 +1610,7 @@ stock bool TF2_IsKillable(int entity)
 	return bResult;
 }
 
-char strTargetEntities[][] =
+stock char strTargetEntities[][] =
 {
 	"player",
 	"tank_boss",
@@ -1635,134 +1622,6 @@ char strTargetEntities[][] =
 	"obj_sentrygun",
 	"obj_dispenser",
 	"obj_teleporter"
-}
-
-stock int FindBestTarget(int client, float playerEyeAngles[3])
-{
-	float flBestDistance = 99999.0;
-	int iBestTarget = -1;
-	
-	float flPos[3];
-	GetClientEyePosition(client, flPos);
-
-	if(g_bTeammates[client])
-	{
-		int iLowestHP = 999999;
-		for (int i = 1; i <= MaxClients; i++)
-		{
-			if(i == client)
-				continue;
-			
-			if(!IsClientInGame(i))
-				continue;
-			
-			if(!IsPlayerAlive(i))
-				continue;
-			
-			if(GetEntProp(i, Prop_Send, "m_iTeamNum") != GetClientTeam(client))
-				continue;
-			
-			if(!TF2_IsKillable(i))
-				continue;
-			
-			int iBone = FindBestHitbox(client, playerEyeAngles, i);
-			if(iBone == -1)
-				continue;
-			
-			if(IsBoneVisible(client, playerEyeAngles, i, iBone))
-			{
-				int iMaxHealth = GetMaxHealth(i);
-				int iHealth = GetEntProp(i, Prop_Data, "m_iHealth");
-				
-			//	PrintToServer("%N %i / %i", i, iMaxHealth, iHealth);
-				
-				if(iHealth < iMaxHealth && iHealth < iLowestHP)
-				{
-					iLowestHP = iHealth;
-					iBestTarget = i;
-				}
-			}
-		}
-		
-		return iBestTarget;
-	}
-
-	for (int i = 0; i < ((g_bTeammates[client]) ? 1 : sizeof(strTargetEntities)); i++)
-	{
-		int iEnt = -1;
-		while((iEnt = FindEntityByClassname(iEnt, strTargetEntities[i])) != -1)
-		{
-			int iTarget = iEnt;
-		
-			if(iTarget == client)
-				continue;
-			
-			if(GetEntProp(iTarget, Prop_Send, "m_iTeamNum") == GetClientTeam(client) && !g_bTeammates[client])
-				continue;
-			
-			if(!TF2_IsKillable(iTarget))
-				continue;
-			
-			if(StrEqual(strTargetEntities[i], "player"))
-			{
-				if(!IsClientInGame(iEnt))
-					continue;
-				
-				if(!IsPlayerAlive(iEnt))
-					continue;
-				
-				int iBone = FindBestHitbox(client, playerEyeAngles, iTarget);
-				if(iBone == -1)
-					continue;
-				
-				int iHealer = FindHealer(iTarget);
-				if(iHealer != -1)
-				{
-					iBone = FindBestHitbox(client, playerEyeAngles, iHealer);
-					if(IsBoneVisible(client, playerEyeAngles, iHealer, iBone))
-					{
-						iTarget = iHealer;
-					}
-				}
-				
-				if(IsBoneVisible(client, playerEyeAngles, iTarget, iBone))
-				{
-					float flTheirOrigin[3];
-					GetClientAbsOrigin(iTarget, flTheirOrigin);
-					
-					float flDistance = GetVectorDistance(flPos, flTheirOrigin);
-					
-					if(flDistance < flBestDistance)
-					{
-						flBestDistance = flDistance;
-						iBestTarget = iTarget;
-					}
-				}
-			}
-			else
-			{
-				int iBone = FindBestHitbox(client, playerEyeAngles, iTarget);
-				if(iBone == -1)
-					continue;
-				
-				if(IsBoneVisible(client, playerEyeAngles, iTarget, iBone))
-				{
-					float flTheirOrigin[3];
-					GetEntPropVector(iTarget, Prop_Send, "m_vecOrigin", flTheirOrigin);
-					
-					float flDistance = GetVectorDistance(flPos, flTheirOrigin);
-					
-					if(flDistance < flBestDistance)
-					{
-						flBestDistance = flDistance;
-						iBestTarget = iTarget;
-					}
-				}
-			}
-		}
-	}
-	
-	return iBestTarget;
 }
 
 stock int FindHealer(int client)

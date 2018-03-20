@@ -30,6 +30,8 @@ bool g_bBuildingOutline[MAXPLAYERS + 1];
 
 int g_iFOV[MAXPLAYERS + 1];
 int g_iAimType[MAXPLAYERS + 1];
+
+bool g_bListenForFOV[MAXPLAYERS + 1];
 float g_flAimFOV[MAXPLAYERS + 1];
 
 Handle g_hPrimaryAttack;
@@ -105,7 +107,7 @@ public void OnPluginStart()
 	}
 	
 	HookEvent("player_spawn", Event_PlayerSpawn, EventHookMode_Post);
-	
+
 //	g_hHudInfo = CreateHudSynchronizer();
 	g_hHudShotCounter = CreateHudSynchronizer();
 	g_hHudEnemyAim = CreateHudSynchronizer();
@@ -168,6 +170,7 @@ public void OnClientPutInServer(int client)
 	g_bInstantReZoom[client] = false;
 	g_bEnemyAimWarning[client] = false;
 	g_bRadar[client] = false;
+	g_bListenForFOV[client] = false;
 	
 	g_bAimbot[client] = false;
 	g_bAutoShoot[client] = false;
@@ -426,6 +429,26 @@ public int MenuVisualsHandler(Menu menu, MenuAction action, int param1, int para
 	}
 }
 
+public void OnClientSayCommand_Post(int client, const char[] command, const char[] sArgs)		
+{		
+	if(!g_bListenForFOV[client])		
+		return;		
+	
+	float flFov = StringToFloat(sArgs);		
+	
+	if(flFov > 180.0)		
+		flFov = 180.0;		
+	
+	if(flFov < 1.0)		
+		flFov = 1.0;		
+	
+	g_flAimFOV[client] = flFov;		
+	
+	PrintToChat(client, "Aimbot FOV set to: %.1f", flFov);		
+	
+	DisplayAimbotMenuAtItem(client, 0);
+	g_bListenForFOV[client] = false;		
+}
 
 public int MenuAimbotHandler(Menu menu, MenuAction action, int param1, int param2)
 {
@@ -455,7 +478,11 @@ public int MenuAimbotHandler(Menu menu, MenuAction action, int param1, int param
 				else if(g_iAimType[param1] == AIM_FOV)
 					g_iAimType[param1] = AIM_NEAR;
 			}
-			case 2: PrintCenterText(param1, "Hi");	//TODO Make do thing.
+			case 2:
+			{		
+				PrintToChat(param1, "Type your desired aim fov in chat now (1 - 180)"); 		
+				g_bListenForFOV[param1] = true;		
+			}
 			case 3: g_bAutoShoot[param1] = !g_bAutoShoot[param1];
 			case 4:
 			{
@@ -657,18 +684,57 @@ public Action Event_PlayerSpawn(Handle event, const char[] name, bool dontBroadc
 {
 	int client = GetClientOfUserId(GetEventInt(event, "userid"));
 	
-	//Create the outline if don't have outline
-	if(!TF2_HasGlow(client))
+	//Remomve Client Glow
+	if(TF2_HasGlow(client))
 	{
-		TF2_CreateGlow(client, "PlayersOutline");
+		int index = -1;
+		while ((index = FindEntityByClassname(index, "tf_glow")) != -1)
+		{
+			char strName[64];
+			GetEntPropString(index, Prop_Data, "m_iName", strName, sizeof(strName));
+			if(StrEqual(strName, "PlayersOutline"))
+			{
+				char strTargetName[32];
+    			GetEntPropString(index, Prop_Data, "m_target", strTargetName, sizeof(strTargetName));
+    			
+    			char strTarget[32];
+    			Format(strTarget, sizeof(strTarget), "player%i", client);
+    	
+    			if(StrEqual(strTargetName, strTarget))
+				{
+					AcceptEntityInput(index, "Kill");
+				}
+			}
+		}
 	}
+	
+	//Create glow for client
+	TF2_CreateGlow(client, "PlayersOutline");
+}
+
+public void OnEntityCreated(int entity, const char[] classname)
+{
+	if (StrContains(classname, "obj_") != -1)
+	{
+		SDKHook(entity, SDKHook_SpawnPost, Hook_OnObjSpawn);
+	}
+}
+
+public void Hook_OnObjSpawn(int entity)
+{  
+	RequestFrame(Frame_CreateGlowOnEntity, entity);
+} 
+
+public void Frame_CreateGlowOnEntity(int entity)
+{
+	TF2_CreateGlow(entity, "BuildingsOutline");
 }
 
 //		}-
 
 
 public Action TF2_CalcIsAttackCritical(int client, int weapon, char[] weaponname, bool &result)
-{
+{	
 	if(g_bAllCrits[client])
 	{
 		result = true;
@@ -824,12 +890,17 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	{
 		//SetEntProp(client, Prop_Send, "m_iFOV", 90);
 		
-		float target_point[3]; target_point = SelectBestTargetPos(client, angles);
-		if (FloatAbs(target_point[2]) == 0.0)
+		int iTarget = -1;
+		float target_point[3]; target_point = SelectBestTargetPos(client, angles, iTarget);		
+		if (target_point[2] == 0 || iTarget == -1)
 			return Plugin_Continue;
-		
+			
 		float eye_to_target[3];
-		SubtractVectors(target_point, GetEyePosition(client), eye_to_target);
+		//SubtractVectors(target_point, GetEyePosition(client), eye_to_target);
+		SubtractVectors(VelocityExtrapolate(iTarget, target_point), 
+						VelocityExtrapolate(client, GetEyePosition(client)), 
+						eye_to_target);
+		
 		GetVectorAngles(eye_to_target, eye_to_target);
 		
 		eye_to_target[0] = AngleNormalize(eye_to_target[0]);
@@ -861,11 +932,12 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 }
 
 //Do all predictions so we can catch people coming round corners.
-stock float[] SelectBestTargetPos(int client, float playerEyeAngles[3])
+stock float[] SelectBestTargetPos(int client, float playerEyeAngles[3], int &iBestEnemy)
 {
 	float flBestDistance = 99999.0;
 	float best_target_point[3];
-
+	
+	float flBestDot = 1.0;
 	for (int i = 1; i <= MaxClients; i++)
 	{
 		if(i == client)
@@ -925,6 +997,8 @@ stock float[] SelectBestTargetPos(int client, float playerEyeAngles[3])
 			{
 				flBestDistance = flDistance;
 				best_target_point = target_point;
+				
+				iBestEnemy = i;
 			}
 		}
 	}
@@ -932,7 +1006,12 @@ stock float[] SelectBestTargetPos(int client, float playerEyeAngles[3])
 	return best_target_point;
 }
 
-
+stock float[] VectorFromPoints(float p1[3], float p2[3])		
+{		
+	float v[3];		
+	MakeVectorFromPoints(p1, p2, v);		
+	return v;		
+}
 
 stock float[] PredictCorrection(int iClient, int iWeapon, int iTarget, float vecFrom[3], int iQuality)
 {
@@ -1170,11 +1249,28 @@ bool PhysicsApplyFriction(float input[3], float out[3], float flSurfaceFriction,
 	return true;
 }
 
+float[] VelocityExtrapolate(int client, float eyepos[3])		
+{
+	float absVel[3];		
+	GetEntPropVector(client, Prop_Data, "m_vecVelocity", absVel);		
+	
+	float v[3];		
+	
+	v[0] = eyepos[0] + (absVel[0] * GetTickInterval());		
+	v[1] = eyepos[1] + (absVel[1] * GetTickInterval());		
+	v[2] = eyepos[2] + (absVel[2] * GetTickInterval());		
+	
+	return v;		
+}
+
 bool IsPlayerReloading(int client)
 {
 	int PlayerWeapon = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
 	
 	if(!IsValidEntity(PlayerWeapon))
+		return false;
+	
+	if(SDKCall(g_hGetWeaponID, PlayerWeapon) == TF_WEAPON_COMPOUND_BOW)
 		return false;
 	
 	//Fix for pyro flamethrower aimbot not aiming.	
@@ -1863,6 +1959,17 @@ stock float GetProjectileSpeed(int iWeapon)
 		flProjectileSpeed += flProjectileSpeed * (1.15 * flMultiplier);
 		
 		//PrintToServer("Rocket Specialist %f -> %f", flMultiplier, flProjectileSpeed);
+	}
+	
+	//Projectile speed increased		
+	attrib = TF2Attrib_GetByDefIndex(iWeapon, 103);		
+	if(attrib != Address_Null)		
+	{
+		//NASA Math		
+		float flMultiplier = TF2Attrib_GetValue(attrib);				
+		flProjectileSpeed += flProjectileSpeed * flMultiplier;		
+		
+		//PrintToServer("Projectile speed increased %f -> %f", flMultiplier, flProjectileSpeed);		
 	}
 	
 	return flProjectileSpeed;

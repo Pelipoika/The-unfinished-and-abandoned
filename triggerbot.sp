@@ -700,10 +700,10 @@ public Action Event_PlayerSpawn(Handle event, const char[] name, bool dontBroadc
 			{
 				char strTargetName[32];
 				GetEntPropString(index, Prop_Data, "m_target", strTargetName, sizeof(strTargetName));
-				
+
 				char strTarget[32];
 				Format(strTarget, sizeof(strTarget), "player%i", client);
-		
+
 				if(StrEqual(strTargetName, strTarget))
 				{
 					AcceptEntityInput(index, "Kill");
@@ -713,7 +713,14 @@ public Action Event_PlayerSpawn(Handle event, const char[] name, bool dontBroadc
 	}
 	
 	//Create glow for client
-	TF2_CreateGlow(client, "PlayersOutline");
+	RequestFrame(Frame_CreateGlowOnPlayer, GetClientUserId(client));
+}
+
+public void Frame_CreateGlowOnPlayer(int userid)
+{
+	int client = GetClientOfUserId(userid);
+	if(client > 0)
+		TF2_CreateGlow(client, "PlayersOutline");
 }
 
 public void OnEntityCreated(int entity, const char[] classname)
@@ -726,12 +733,13 @@ public void OnEntityCreated(int entity, const char[] classname)
 
 public void Hook_OnObjSpawn(int entity)
 {  
-	RequestFrame(Frame_CreateGlowOnEntity, entity);
+	RequestFrame(Frame_CreateGlowOnEntity, EntIndexToEntRef(entity));
 } 
 
-public void Frame_CreateGlowOnEntity(int entity)
+public void Frame_CreateGlowOnEntity(int entityref)
 {
-	TF2_CreateGlow(entity, "BuildingsOutline");
+	if(entityref != INVALID_ENT_REFERENCE)
+		TF2_CreateGlow(EntRefToEntIndex(entityref), "BuildingsOutline");
 }
 
 //		}-

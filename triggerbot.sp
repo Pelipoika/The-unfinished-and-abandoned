@@ -881,56 +881,55 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		//SetEntProp(iAw, Prop_Data, "m_bRezoomAfterShot", true);
 	}
 	
+	//IN_ATTACK Should always bypass all waiting
+	
 	if(!(buttons & IN_ATTACK) && !g_bAutoShoot[client])
 		return Plugin_Continue;
 
+	if(!(buttons & IN_ATTACK) && !IsReadyToFire(iAw))
+		return Plugin_Continue;
+	
+	if(!g_bAimbot[client])
+		return Plugin_Continue;
+	
+	int iTarget = -1;
+	float target_point[3]; target_point = SelectBestTargetPos(client, angles, iTarget);		
+	if (target_point[2] == 0.0 || iTarget < 0)
+		return Plugin_Continue;
+	
 	if(IsPlayerReloading(client) && !(buttons & IN_ATTACK))
 		return Plugin_Continue;
 	
-	if(!IsReadyToFire(iAw))
-		return Plugin_Continue;
+	float eye_to_target[3];
+	SubtractVectors(VelocityExtrapolate(iTarget, target_point), 
+					VelocityExtrapolate(client, GetEyePosition(client)), 
+					eye_to_target);
 	
-	if(g_bAimbot[client])
+	GetVectorAngles(eye_to_target, eye_to_target);
+	
+	eye_to_target[0] = AngleNormalize(eye_to_target[0]);
+	eye_to_target[1] = AngleNormalize(eye_to_target[1]);
+	eye_to_target[2] = 0.0;
+	
+	if(g_bAutoShoot[client])
 	{
-		//SetEntProp(client, Prop_Send, "m_iFOV", 90);
-		
-		int iTarget = -1;
-		float target_point[3]; target_point = SelectBestTargetPos(client, angles, iTarget);		
-		if (target_point[2] == 0.0 || iTarget == -1)
-			return Plugin_Continue;
-			
-		float eye_to_target[3];
-		//SubtractVectors(target_point, GetEyePosition(client), eye_to_target);
-		SubtractVectors(VelocityExtrapolate(iTarget, target_point), 
-						VelocityExtrapolate(client, GetEyePosition(client)), 
-						eye_to_target);
-		
-		GetVectorAngles(eye_to_target, eye_to_target);
-		
-		eye_to_target[0] = AngleNormalize(eye_to_target[0]);
-		eye_to_target[1] = AngleNormalize(eye_to_target[1]);
-		eye_to_target[2] = 0.0;
-		
-		if(g_bAutoShoot[client])
-		{
-			buttons |= IN_ATTACK;
-		}
-		
-		if(buttons & IN_ATTACK)
-		{
-			SetEntPropVector(client, Prop_Send, "m_vecPunchAngle", view_as<float>({0.0, 0.0, 0.0}));
-		}
-		
-		if(!g_bSilentAim[client]) {
-			TeleportEntity(client, NULL_VECTOR, eye_to_target, NULL_VECTOR);
-		}
-		else {
-			FixSilentAimMovement(client, vel, angles, eye_to_target);
-		}
-		
-		angles = eye_to_target;
-		bChanged = true;
+		buttons |= IN_ATTACK;
 	}
+	
+	if(buttons & IN_ATTACK)
+	{
+		SetEntPropVector(client, Prop_Send, "m_vecPunchAngle", view_as<float>({0.0, 0.0, 0.0}));
+	}
+	
+	if(!g_bSilentAim[client]) {
+		TeleportEntity(client, NULL_VECTOR, eye_to_target, NULL_VECTOR);
+	}
+	else {
+		FixSilentAimMovement(client, vel, angles, eye_to_target);
+	}
+	
+	angles = eye_to_target;
+	bChanged = true;
 	
 	return bChanged ? Plugin_Changed : Plugin_Continue;
 }
@@ -962,7 +961,7 @@ stock float[] SelectBestTargetPos(int client, float playerEyeAngles[3], int &iBe
 		
 		if(IsProjectileWeapon(GetActiveWeapon(client)))
 		{
-			int iBone = LookupBone(i, "bip_pelvis");
+			int iBone = IsHeadShotWeapon(GetActiveWeapon(client)) ? LookupBone(i, "bip_head") : LookupBone(i, "bip_pelvis");
 			if(iBone == -1)
 				continue;
 			
@@ -973,7 +972,7 @@ stock float[] SelectBestTargetPos(int client, float playerEyeAngles[3], int &iBe
 			vecAbs[2] += 5.0;
 		
 			if(GetEntityFlags(i) & FL_ONGROUND 
-			&& IsExplosiveProjectileWeapon(GetActiveWeapon(client)) 
+			&& IsExplosiveProjectileWeapon(GetActiveWeapon(client))
 			&& IsPointVisible(client, playerEyeAngles, i, vecAbs))
 			{
 				//Aim at feet with explosive weapons.
@@ -1007,6 +1006,16 @@ stock float[] SelectBestTargetPos(int client, float playerEyeAngles[3], int &iBe
 	}
 
 	return best_target_point;
+}
+
+stock bool IsHeadShotWeapon(int iWeapon)
+{
+	switch(SDKCall(g_hGetWeaponID, iWeapon))
+	{
+		case TF_WEAPON_COMPOUND_BOW: return true;
+	}
+	
+	return false;
 }
 
 stock float[] VectorFromPoints(float p1[3], float p2[3])		
@@ -1138,7 +1147,7 @@ stock float[] PredictCorrection(int iClient, int iWeapon, int iTarget, float vec
 	
 //	PrintToServer("Simulation ran for %i steps", iSteps);
 
-//	DrawDebugArrow(vecStepPos, vecPredictedPos, view_as<float>({255, 255, 0, 255}), 0.075);
+	//DrawDebugArrow(vecStepPos, vecPredictedPos, view_as<float>({255, 255, 0, 255}), 0.075);
 
 	float flOut[3];
 	SubtractVectors(vecPredictedPos, vecStepPos, flOut);
@@ -1273,7 +1282,7 @@ bool IsPlayerReloading(int client)
 	if(!IsValidEntity(PlayerWeapon))
 		return false;
 	
-	if(SDKCall(g_hGetWeaponID, PlayerWeapon) == TF_WEAPON_COMPOUND_BOW)
+	if(IsProjectileWeapon(PlayerWeapon))
 		return false;
 	
 	//Fix for pyro flamethrower aimbot not aiming.	
@@ -1750,7 +1759,7 @@ stock bool IsReadyToFire(int iWeapon)
 			}
 		}
 		case TF_WEAPON_COMPOUND_BOW:
-		{
+		{		
 			float flChargeBeginTime = GetEntPropFloat(iWeapon, Prop_Send, "m_flChargeBeginTime");
 			
 			float flCharge = flChargeBeginTime == 0.0 ? 0.0 : GetGameTime() - flChargeBeginTime;
@@ -1845,8 +1854,8 @@ stock float GetProjectileGravity(int iWeapon)
 		case TF_WEAPON_FLAREGUN:                flProjectileGravity = 18.5;
 		case TF_WEAPON_RAYGUN_REVENGE:          flProjectileGravity = 12.5; //Manmelter
 		case TF_WEAPON_CROSSBOW:                flProjectileGravity *= 65.0;
-		case TF_WEAPON_COMPOUND_BOW:            flProjectileGravity *= 65.0;
-		case TF_WEAPON_GRENADELAUNCHER:         flProjectileGravity = 50.0;
+		case TF_WEAPON_COMPOUND_BOW:            flProjectileGravity *= 64.0;
+		case TF_WEAPON_GRENADELAUNCHER:         flProjectileGravity = 51.0;
 		case TF_WEAPON_PIPEBOMBLAUNCHER:        flProjectileGravity = 60.0;
 		case TF_WEAPON_SYRINGEGUN_MEDIC:        flProjectileGravity = 15.0;
 		case TF_WEAPON_SHOTGUN_BUILDING_RESCUE: flProjectileGravity *= 70.0;

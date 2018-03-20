@@ -446,7 +446,6 @@ public void OnClientSayCommand_Post(int client, const char[] command, const char
 	
 	PrintToChat(client, "Aimbot FOV set to: %.1f", flFov);		
 	
-	DisplayAimbotMenuAtItem(client, 0);
 	g_bListenForFOV[client] = false;		
 }
 

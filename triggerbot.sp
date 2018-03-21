@@ -569,10 +569,13 @@ void TF2_CreateGlowToAll(char[] strTargetname)
 {
 	if(StrEqual(strTargetname, "PlayersOutline"))
 	{
-		for (int i = 1; i <= MaxClients; i++) 	if (IsClientInGame(i))
+		for (int i = 1; i <= MaxClients; i++) 	
 		{
-			//Create Glow on All client
-			TF2_CreateGlow(i, strTargetname);
+			if (IsClientInGame(i))
+			{
+				//Create Glow on All client
+				TF2_CreateGlow(i, strTargetname);
+			}
 		}
 	}
 	else if(StrEqual(strTargetname, "BuildingsOutline"))
@@ -700,10 +703,10 @@ public Action Event_PlayerSpawn(Handle event, const char[] name, bool dontBroadc
 			{
 				char strTargetName[32];
 				GetEntPropString(index, Prop_Data, "m_target", strTargetName, sizeof(strTargetName));
-
+				
 				char strTarget[32];
 				Format(strTarget, sizeof(strTarget), "player%i", client);
-
+		
 				if(StrEqual(strTargetName, strTarget))
 				{
 					AcceptEntityInput(index, "Kill");
@@ -713,14 +716,7 @@ public Action Event_PlayerSpawn(Handle event, const char[] name, bool dontBroadc
 	}
 	
 	//Create glow for client
-	RequestFrame(Frame_CreateGlowOnPlayer, GetClientUserId(client));
-}
-
-public void Frame_CreateGlowOnPlayer(int userid)
-{
-	int client = GetClientOfUserId(userid);
-	if(client > 0)
-		TF2_CreateGlow(client, "PlayersOutline");
+	TF2_CreateGlow(client, "PlayersOutline");
 }
 
 public void OnEntityCreated(int entity, const char[] classname)
@@ -736,10 +732,14 @@ public void Hook_OnObjSpawn(int entity)
 	RequestFrame(Frame_CreateGlowOnEntity, EntIndexToEntRef(entity));
 } 
 
-public void Frame_CreateGlowOnEntity(int entityref)
+public void Frame_CreateGlowOnEntity(int entref)
 {
-	if(entityref != INVALID_ENT_REFERENCE)
-		TF2_CreateGlow(EntRefToEntIndex(entityref), "BuildingsOutline");
+	int entity = EntRefToEntIndex(entref);
+	
+	if(entity != INVALID_ENT_REFERENCE)
+	{
+		TF2_CreateGlow(entity, "BuildingsOutline");
+	}
 }
 
 //		}-

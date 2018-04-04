@@ -1,4 +1,5 @@
 #include <sourcemod>
+#include <vscriptfun>
 #include <sdktools>
 #include <sdkhooks>
 
@@ -12,6 +13,8 @@ bool g_bSilentAim[MAXPLAYERS + 1];
 bool g_bBunnyHop[MAXPLAYERS + 1];
 bool g_bHeadshots[MAXPLAYERS + 1];
 bool g_bRecoilControl[MAXPLAYERS + 1];
+bool g_bESP[MAXPLAYERS + 1];
+bool g_bSnapLines[MAXPLAYERS + 1];
 
 #define UMSG_SPAM_DELAY 0.1
 float g_flNextTime[MAXPLAYERS + 1];
@@ -69,6 +72,8 @@ public void OnClientPutInServer(int client)
 	g_bAutoShoot[client] = false;
 	g_bSilentAim[client] = false;
 	g_bRecoilControl[client] = false;
+	
+	g_bESP[client] = true;
 	
 	g_bBunnyHop[client] = false;
 	g_bHeadshots[client] = false;
@@ -138,9 +143,19 @@ stock void DisplayMiscMenuAtItem(int client, int page = 0)
 	menu.SetTitle("Misc - Settings");
 	
 	if(g_bBunnyHop[client])
-		menu.AddItem("2", "Bunny Hop: On");
+		menu.AddItem("0", "Bunny Hop: On");
 	else
-		menu.AddItem("2", "Bunny Hop: Off");
+		menu.AddItem("0", "Bunny Hop: Off");
+		
+	if(g_bESP[client])
+		menu.AddItem("1", "ESP: On");
+	else
+		menu.AddItem("1", "ESP: Off");
+		
+	if(g_bSnapLines[client])
+		menu.AddItem("2", "ESP Snap Lines: On");
+	else
+		menu.AddItem("2", "ESP Snap Lines: Off");	
 		
 	menu.ExitButton = true;
 	menu.ExitBackButton = true;
@@ -195,7 +210,9 @@ public int MenuMiscHandler(Menu menu, MenuAction action, int param1, int param2)
 	{
 		switch(param2)
 		{
-			case 0: g_bBunnyHop[param1] = !g_bBunnyHop[param1];
+			case 0: g_bBunnyHop[param1]  = !g_bBunnyHop[param1];
+			case 1: g_bESP[param1]       = !g_bESP[param1];
+			case 2: g_bSnapLines[param1] = !g_bSnapLines[param1];
 		}
 		
 		DisplayMiscMenuAtItem(param1, GetMenuSelectionPosition());
@@ -245,7 +262,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	if(g_bRecoilControl[client])
 	{
 		float vPunch[3]; vPunch = GetAimPunchAngle(client);
-		ScaleVector(vPunch, -2.0);
+		ScaleVector(vPunch, -(FindConVar("weapon_recoil_scale").FloatValue));
 		
 		AddVectors(angles, vPunch, angles);
 		
@@ -262,49 +279,62 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		bChanged = true;
 	}
 	
-	if(g_bAimbot[client])
+	if(g_bESP[client])
 	{
+		Radar(client, angles);
+		
 		if(g_flNextTime[client] <= GetGameTime())
 		{
-			SetEntProp(client, Prop_Data, "m_bLagCompensation", false);
-			SetEntProp(client, Prop_Data, "m_bPredictWeapons", false);
-		
-			Radar(client, angles);
-			
 			g_flNextTime[client] = GetGameTime() + UMSG_SPAM_DELAY;
 		}
+	}
+	
+	if(g_bAimbot[client])
+	{
+		SetEntProp(client, Prop_Data, "m_bLagCompensation", false);
+		SetEntProp(client, Prop_Data, "m_bPredictWeapons", false);
 		
-		int iAw = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
+		int iAw = GetActiveWeapon(client);
 		if(!IsValidEntity(iAw))
 			return Plugin_Continue;
 	
-		if(IsPlayerReloading(client) || (!(buttons & IN_ATTACK) && !g_bAutoShoot[client]))
-			return Plugin_Continue;
-
-		float target_point[3]; target_point = SelectBestTargetPos(client, angles);
-		if (FloatCompare(target_point[2], 0.0) == 0)
+		if(!(buttons & IN_ATTACK))
+		{
+			if(IsPlayerReloading(client) || !g_bAutoShoot[client])
+				return Plugin_Continue;
+		}
+		
+		int iTarget = -1;
+		float target_point[3]; target_point = SelectBestTargetPos(client, angles, iTarget);		
+		if (target_point[2] == 0 || iTarget == -1)
 			return Plugin_Continue;
 		
 		if(g_bAutoShoot[client])
 		{
 			if(IsPlayerReloading(client))
+			{
 				buttons &= ~IN_ATTACK;
+			}
 			else
+			{
 				buttons |= IN_ATTACK;
+			}
 		}
 		
 		float eye_to_target[3];
-		SubtractVectors(target_point, GetEyePosition(client), eye_to_target);
+		
+		SubtractVectors(VelocityExtrapolate(iTarget, target_point), 
+						VelocityExtrapolate(client, GetEyePosition(client)), 
+						eye_to_target);
+						
 		GetVectorAngles(eye_to_target, eye_to_target);
 		
 		eye_to_target[0] = AngleNormalize(eye_to_target[0]);
 		eye_to_target[1] = AngleNormalize(eye_to_target[1]);
 		eye_to_target[2] = 0.0;
-		
-		SetEntPropFloat(iAw, Prop_Send, "m_fAccuracyPenalty", 0.0);
-		
+
 		float vPunch[3]; vPunch = GetAimPunchAngle(client);
-		ScaleVector(vPunch, -2.0);
+		ScaleVector(vPunch, -(FindConVar("weapon_recoil_scale").FloatValue));
 		
 		AddVectors(eye_to_target, vPunch, eye_to_target);
 		
@@ -317,12 +347,29 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		
 		angles = eye_to_target;
 		bChanged = true;
+		
+		SetEntPropFloat(iAw, Prop_Send, "m_fAccuracyPenalty", 0.0);
+		//SetEntProp(client, Prop_Send, "m_iShotsFired", 0);
 	}
 	
 	return bChanged ? Plugin_Changed : Plugin_Continue;
 }
 
-float[] SelectBestTargetPos(int client, const float realAngles[3])
+float[] VelocityExtrapolate(int client, float eyepos[3])
+{
+	float absVel[3];
+	GetEntPropVector(client, Prop_Data, "m_vecVelocity", absVel);
+	
+	float v[3];
+	
+	v[0] = eyepos[0] + (absVel[0] * GetTickInterval());
+	v[1] = eyepos[1] + (absVel[1] * GetTickInterval());
+	v[2] = eyepos[2] + (absVel[2] * GetTickInterval());
+	
+	return v;
+}
+
+float[] SelectBestTargetPos(int client, const float realAngles[3], int &iBestEnemy)
 {
 	float flMyPos[3]; flMyPos = GetAbsOrigin(client);
 
@@ -354,8 +401,30 @@ float[] SelectBestTargetPos(int client, const float realAngles[3])
 		GetBonePosition(i, iBone, vecHead, vecBad);
 		
 		if(!IsPointVisible(client, i, GetEyePosition(client), vecHead))
-			continue;
+		{
+			if(g_bHeadshots[client])
+				continue;
+		
+			bool bVisibleOther = false;
+		
+			//Head wasn't visible, check other bones.
+			for (int b = 0; b < 40; b++)
+			{
+				GetBonePosition(i, b, vecHead, vecBad);
+				
+				if(IsPointVisible(client, i, GetEyePosition(client), vecHead))
+				{
+					bVisibleOther = true;
+					break;
+				}
+			}
 			
+			//PrintToServer("BodyAim ? %s", bVisibleOther ? "YES" : "NO");
+			
+			if(!bVisibleOther)
+				continue;
+		}
+
 		float flEnemyPos[3]; flEnemyPos = GetAbsOrigin(i);
 			
 		float flDistance = GetVectorDistance(flEnemyPos, flMyPos, true)
@@ -363,15 +432,50 @@ float[] SelectBestTargetPos(int client, const float realAngles[3])
 		{
 			flClosestDistance = flDistance;
 			flTargetPos = vecHead;
+			
+			iBestEnemy = i;
 		}
 	}
 	
 	return flTargetPos;
 }
 
+stock void VisualizeBones(int entity)
+{
+	for (int b = 0; b < 80; b++)
+	{
+		float vecHead[3], vecBad[3];
+		GetBonePosition(entity, b, vecHead, vecBad);
+		
+		char bone[8];
+		Format(bone, sizeof(bone), "%i", b);
+		
+		Point_WorldText(vecHead, NULL_VECTOR, bone, "1.5", 255, 0, 255);
+	}
+}
+
+stock int Point_WorldText(float fPos[3], float fAngles[3], char[] sText, char[] sSize, int r, int g, int b) 
+{ 
+	int iEntity = CreateEntityByName("point_worldtext"); 
+	DispatchKeyValueVector(iEntity, "origin", fPos);
+	DispatchKeyValueVector(iEntity, "angles", fAngles);
+	DispatchKeyValue(iEntity, "message", sText); 
+	DispatchKeyValue(iEntity, "textsize", sSize); 
+	 
+	char sColor[11]; 
+	Format(sColor, sizeof(sColor), "%d %d %d", r, g, b); 
+	DispatchKeyValue(iEntity, "color", sColor); 
+	 
+	DispatchSpawn(iEntity);
+	 
+	TeleportEntity(iEntity, fPos, fAngles, NULL_VECTOR); 
+	 
+	return iEntity; 
+}  
+
 bool IsPlayerReloading(int client)
 {
-	int PlayerWeapon = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
+	int PlayerWeapon = GetActiveWeapon(client);
 	
 	if(!IsValidEntity(PlayerWeapon))
 		return false;
@@ -393,11 +497,11 @@ bool IsPlayerReloading(int client)
 
 stock void Radar(int client, float playerAngles[3])
 {
-	float flMyPos[3];
-	GetClientAbsOrigin(client, flMyPos);
+	//float flMyPos[3];
+	//GetClientAbsOrigin(client, flMyPos);
 	
-	float screenx, screeny;
-	float vecGrenDelta[3];
+	//float screenx, screeny;
+	//float vecGrenDelta[3];
 	
 	for (int i = 1; i <= MaxClients; i++)
 	{
@@ -413,19 +517,144 @@ stock void Radar(int client, float playerAngles[3])
 		if(GetClientTeam(i) == GetClientTeam(client))
 			continue;
 		
-		float flEnemyPos[3];
-		GetClientAbsOrigin(i, flEnemyPos);
+		//float vecMaxs[3], vecMins[3];
+		//GetEntPropVector(i, Prop_Send, "m_vecMaxs", vecMaxs);
+		//GetEntPropVector(i, Prop_Send, "m_vecMins", vecMins);
 		
+		if(g_bSnapLines[client])
+			VSF.DebugDrawLine(GetAbsOrigin(client), GetAbsOrigin(i), 255, 0, 0, true, 0.05);
+		
+		HealthBar(i, playerAngles);
+	/*	
+		float flEnemyPos[3];
 		flEnemyPos[2] = flMyPos[2]; //We only care about 2D
 		
 		vecGrenDelta = GetDeltaVector(client, i);
 		NormalizeVector(vecGrenDelta, vecGrenDelta);
-		GetEnemyPosToScreen(client, playerAngles, vecGrenDelta, screenx, screeny, GetVectorDistance(flMyPos, flEnemyPos) * 0.25);
+		GetEnemyPosToScreen(client, playerAngles, vecGrenDelta, screenx, screeny, GetVectorDistance(flMyPos, GetAbsOrigin(i)) * 0.25);
 		
 		SetHudTextParams(screenx, screeny, UMSG_SPAM_DELAY + 0.5, 255, 0, 0, 0, 0, 0.0, 0.0, 0.0);
-		ShowSyncHudText(client, g_hHudRadar[i], "⬤");
+		ShowSyncHudText(client, g_hHudRadar[i], "⬤");*/
 	}
 }
+
+void HealthBar( int pEntity, float playerAngles[3] )
+{
+	float vecOrigin[3]; vecOrigin = GetAbsOrigin(pEntity);
+	
+	float vecMaxs[3], vecMins[3];
+	GetEntPropVector(pEntity, Prop_Send, "m_vecMaxs", vecMaxs);
+	GetEntPropVector(pEntity, Prop_Send, "m_vecMins", vecMins);
+	
+	VSF.DebugDrawBox(vecOrigin, vecMaxs, vecMins, 255, 0, 0, 55, 0.05);
+	
+	float vLeft[3];
+	GetAngleVectors(playerAngles, NULL_VECTOR, vLeft, NULL_VECTOR);
+	
+	MapCircleToSquare(vLeft, vLeft);
+	
+	vecOrigin[0] -= (vLeft[0] * vecMaxs[0]) * 1.15;
+	vecOrigin[1] -= (vLeft[1] * vecMaxs[1]) * 1.15;
+	
+	int iBoxes = RoundToCeil(GetClientHealth(pEntity) / 10.0);
+	
+	vecMaxs[2] = (vecMaxs[2] / 100) * 10;
+	
+	//Healthbar width stuff
+	vecMaxs[0] = vecMaxs[1] = 2.0;
+	vecMins[0] = vecMins[1] = -2.0;
+	
+	float flHPRatio = (GetClientHealth(pEntity) / 100.0) * 100;
+
+	int R = flHPRatio < 50 ? 255 : RoundToFloor(255 - (flHPRatio * 2 - 100) * 255 / 100);
+	int G = flHPRatio > 50 ? 255 : RoundToFloor((flHPRatio * 2) * 255 / 155);
+	int B = 0;
+
+	for ( int i = 0; i < iBoxes; i++ )
+	{
+		VSF.DebugDrawBox(vecOrigin, vecMaxs, vecMins, R, G, B, 55, 0.05);
+	
+		vecOrigin[2] += vecMaxs[2];
+	}
+}
+
+void MapCircleToSquare(float out[3], const float input[3]) 
+{ 
+	float x = input[0], y = input[1]; 
+	float nx, ny; 
+	
+	if(x < 0.000002 && x > -0.000002) 
+	{ 
+		nx = 0.0; 
+		ny = y; 
+	} 
+	else if(y < 0.000002 && y > -0.000002) 
+	{ 
+		nx = x; 
+		ny = 0.0; 
+	} 
+	else if (y > 0.0) 
+	{ 
+		if (x > 0.0) 
+		{ 
+			if (x < y) 
+			{ 
+				nx = x / y; 
+				ny = 1.0; 
+			} 
+			else 
+			{ 
+				nx = 1.0; 
+				ny = y / x; 
+			} 
+		} 
+		else 
+		{ 
+			if (x < -y) 
+			{ 
+				nx = -1.0; 
+				ny = -(y / x); 
+			} 
+			else 
+			{ 
+				nx = x / y; 
+				ny = 1.0; 
+			} 
+		} 
+	}
+	else 
+	{ 
+		if (x > 0.0) 
+		{ 
+			if (-x > y) 
+			{
+				nx = -(x / y); 
+				ny = -1.0; 
+			} 
+			else 
+			{ 
+				nx = 1.0; 
+				ny = (y / x); 
+			} 
+		} 
+		else 
+		{ 
+			if (x < y) 
+			{ 
+				nx = -1.0; 
+				ny = -(y / x); 
+			} 
+			else 
+			{ 
+				nx = -(x / y); 
+				ny = -1.0; 
+			} 
+		} 
+	}
+	
+	out[0] = nx; 
+	out[1] = ny; 
+}  
 
 stock void GetEnemyPosToScreen(int client, float playerAngles[3], float vecDelta[3], float& xpos, float& ypos, float flRadius)
 {

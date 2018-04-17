@@ -69,18 +69,30 @@ public Action Command_Get(int client, int argc)
 	return Plugin_Handled;
 }
 
+/*
 stock int GetHealerByIndex(int client, int index)
 {
-	int iShared = FindSendPropInfo("CTFPlayer", "m_nNumHealers") + 12;
+	int m_aHealers = FindSendPropInfo("CTFPlayer", "m_nNumHealers") + 12;
 	
-	Address m_Shared = GetEntityAddress(client) + Address(iShared);
+	Address m_Shared = GetEntityAddress(client) + view_as<Address>(m_aHealers);
+	Address aHealers = view_as<Address>(LoadFromAddress(m_Shared, NumberType_Int32));
+	
+	return (LoadFromAddress(aHealers + view_as<Address>(index * 0x24), NumberType_Int32) & 0xFFF);
+}
+*/
+
+stock int GetHealerByIndex(int client, int index)
+{
+	int m_aHealers = FindSendPropInfo("CTFPlayer", "m_nNumHealers") + 12;
+	
+	Address m_Shared = GetEntityAddress(client) + Address(m_aHealers);
 	Address aHealers = Address(ReadInt(m_Shared));
 
 	return ReadInt(Transpose(aHealers, (index * 0x24))) & 0xFFF;
 }
 
 stock Pointer Transpose(Pointer pAddr, int iOffset)
-{		
+{
 	return Address(int(pAddr) + iOffset);
 }
 stock int Dereference(Pointer pAddr, int iOffset = 0)

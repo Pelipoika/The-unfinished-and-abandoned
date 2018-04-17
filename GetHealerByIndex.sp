@@ -71,33 +71,33 @@ public Action Command_Get(int client, int argc)
 
 stock int GetHealerByIndex(int client, int index)
 {
-	int iShared = FindSendPropInfo("CTFPlayer", "m_Shared");
-
-	Address m_Shared = GetEntityAddress(client) + Address(iShared);
-	Address aHealers = Address(Dereference(m_Shared, 0x190));
+	int iShared = FindSendPropInfo("CTFPlayer", "m_nNumHealers") + 12;
 	
+	Address m_Shared = GetEntityAddress(client) + Address(iShared);
+	Address aHealers = Address(ReadInt(m_Shared));
+
 	return ReadInt(Transpose(aHealers, (index * 0x24))) & 0xFFF;
 }
 
-stock Pointer Transpose(Pointer pAddr, int iOffset)		
+stock Pointer Transpose(Pointer pAddr, int iOffset)
 {		
-    return Address(int(pAddr) + iOffset);		
+	return Address(int(pAddr) + iOffset);
 }
-stock int Dereference(Pointer pAddr, int iOffset = 0)		
-{		
-    if(pAddr == nullptr)		
-    {
-        return -1;		
-    }
-    
-    return ReadInt(Transpose(pAddr, iOffset));		
-} 		
-stock int ReadInt(Pointer pAddr)		
-{		
-    if(pAddr == nullptr)		
-    {
-        return -1;		
-    }
-    		
-    return LoadFromAddress(pAddr, NumberType_Int32);		
-}  
+stock int Dereference(Pointer pAddr, int iOffset = 0)
+{
+	if(pAddr == nullptr)
+	{
+		return -1;
+	}
+	
+	return ReadInt(Transpose(pAddr, iOffset));
+}
+stock int ReadInt(Pointer pAddr)
+{
+	if(pAddr == nullptr)
+	{
+		return -1;
+	}
+	
+	return LoadFromAddress(pAddr, NumberType_Int32);
+}

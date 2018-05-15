@@ -39,8 +39,13 @@ public void OnPluginStart()
 	
 	RegAdminCmd("sm_endrussians", Bye, ADMFLAG_BAN);
 	
-	HookUserMessage(GetUserMessageId("VGUIMenu"), VGUIMenu, true);
+	//HookUserMessage(GetUserMessageId("VGUIMenu"), VGUIMenu, true);
 }
+/*
+public void OnMapEnd()
+{
+	ServerCommand("tf_bot_kick all");
+}*/
 
 public Action VGUIMenu(UserMsg msg_id, BfRead msg, const int[] players, int playersNum, bool reliable, bool init)
 {	
@@ -96,7 +101,7 @@ public Action Bye(int client, int args)
 			continue;
 		
 		QueryClientConVar(i, "cl_language", ConvarQueryResult, client);
-	}	
+	}
 
 	return Plugin_Handled;
 }
@@ -108,7 +113,7 @@ public void ConvarQueryResult(QueryCookie cookie, int client, ConVarQueryResult 
 	if(StrEqual(cvarValue, "russian") 
 	|| StrEqual(cvarValue, "polish"))
 	{
-		CPrintToChat(iIssuer, "%N, is a {red}communist faggot AND HAS BEEN {fullred}MUTED!", client);
+		CPrintToChat(iIssuer, "%N, is a {red}communist AND HAS BEEN {fullred}MUTED!", client);
 		BaseComm_SetClientMute(client, true);
 	}
 	else
@@ -294,7 +299,7 @@ public Action Event_PlayerTeam(Event event, const char[] name, bool dontBroadcas
 		if(!IsFakeClient(client) && iOldTeam == TFTeam_Spectator && g_bCanVote[client])
 		{
 			g_bCanVote[client] = false;
-			PrintToChat(client, "You vote priviledges have been stripped");
+			PrintToChat(client, "Your vote priviledges have been stripped");
 		}
 	}
 	

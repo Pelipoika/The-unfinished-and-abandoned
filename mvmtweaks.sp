@@ -12,6 +12,11 @@ ConVar g_hDifficulty;
 
 // /[\x{0410}-\x{042F}]+/umi
 
+char g_sPermaBannedFromVoting[][] = 
+{
+	"76561198389562175",
+};
+
 public Plugin myinfo = 
 {
 	name = "[TF2] MvM Tweaks",
@@ -32,6 +37,7 @@ public void OnPluginStart()
 	g_hDifficulty.AddChangeHook(DifficultyScalingChanged);
 	
 	AddCommandListener(callvote, "callvote");
+	AddCommandListener(vote, "vote");
 	
 	HookEvent("player_team", Event_PlayerTeam, EventHookMode_Post);
 	HookEvent("mvm_wave_complete", WaveCompleted);
@@ -136,11 +142,51 @@ void DifficultyScalingChanged(ConVar convar, const char[] oldValue, const char[]
 
 public Action callvote(int client, const char[]cmd, int argc)
 {
+	char steam64[64];
+	GetClientAuthId(client, AuthId_SteamID64, steam64, sizeof(steam64));	
+
+	bool bFuckYou = false;
+	
+	for (int i = 0; i < sizeof(g_sPermaBannedFromVoting); i++)
+	{
+		if(StrEqual(g_sPermaBannedFromVoting[i], steam64))
+		{
+			bFuckYou = true;
+			break;
+		}
+	}
+
 	if(TF2_IsMvM())
 	{
-		if(!g_bCanVote[client])
+		if(!g_bCanVote[client] || bFuckYou)
 		{
 			PrintToChat(client, "You can't vote right now");
+			return Plugin_Handled;
+		}
+	}
+	return Plugin_Continue;
+}
+
+public Action vote(int client, const char[]cmd, int argc)
+{
+	char steam64[64];
+	GetClientAuthId(client, AuthId_SteamID64, steam64, sizeof(steam64));	
+
+	bool bFuckYou = false;
+	
+	for (int i = 0; i < sizeof(g_sPermaBannedFromVoting); i++)
+	{
+		if(StrEqual(g_sPermaBannedFromVoting[i], steam64))
+		{
+			bFuckYou = true;
+			break;
+		}
+	}
+
+	if(TF2_IsMvM())
+	{
+		if(!g_bCanVote[client] || TF2_GetClientTeam(client) == TFTeam_Spectator)
+		{
 			return Plugin_Handled;
 		}
 	}

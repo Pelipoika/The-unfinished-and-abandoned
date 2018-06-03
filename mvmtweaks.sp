@@ -9,6 +9,7 @@
 //bool g_bCanVote[MAXPLAYERS+1];
 
 ArrayList g_aVoteBlockedUsers;
+ArrayList g_aSpectateBlockedUsers;
 
 ConVar g_hDifficulty;
 
@@ -28,6 +29,10 @@ public Plugin myinfo =
 	url = "http://www.sourcemod.net/plugins.php?author=Pelipoika&search=1"
 };
 
+//Pressing F4 makes you unable to spectate
+//Calling a vote makes you unable to spectate
+//Leaving the spectator team blocks you from voting
+//All of the above is void once a wave is completed/failed or after map change
 public void OnPluginStart()
 {
 	g_hDifficulty = CreateConVar("sm_mvmtweaks_difficulty", "1", "Auto scale difficulty");
@@ -43,13 +48,26 @@ public void OnPluginStart()
 	AddCommandListener(callvote, "callvote");
 	AddCommandListener(vote, "vote");
 	
-	g_aVoteBlockedUsers = new ArrayList();
+	AddCommandListener(pressedf4, "tournament_player_readystate");
+	AddCommandListener(jointeam, "jointeam");
+	AddCommandListener(jointeam, "spectate");
+	
+	g_aVoteBlockedUsers = new ArrayList(PLATFORM_MAX_PATH);
+	g_aSpectateBlockedUsers = new ArrayList(PLATFORM_MAX_PATH);
 }
 
 public void OnMapStart()
 {
 	g_aVoteBlockedUsers.Clear();
+	g_aSpectateBlockedUsers.Clear();
 }
+
+public Action WaveCompleted(Event event, const char[] name, bool dontBroadcast)
+{
+	g_aVoteBlockedUsers.Clear();
+	g_aSpectateBlockedUsers.Clear();
+}
+
 
 public Action Bye(int client, int args)
 {
@@ -69,7 +87,7 @@ public void ConvarQueryResult(QueryCookie cookie, int client, ConVarQueryResult 
 	int iIssuer = value;
 	
 	if (StrEqual(cvarValue, "russian")
-	 || StrEqual(cvarValue, "polish"))
+		 || StrEqual(cvarValue, "polish"))
 	{
 		CPrintToChat(iIssuer, "%N, is a {red}communist AND HAS BEEN {fullred}MUTED!", client);
 		BaseComm_SetClientMute(client, true);
@@ -92,20 +110,47 @@ void DifficultyScalingChanged(ConVar convar, const char[] oldValue, const char[]
 	}
 }
 
-public Action callvote(int client, const char[] cmd, int argc)
+public Action pressedf4(int client, const char[] cmd, int argc)
 {
-	if (TF2_IsMvM() && !IsAllowedToVote(client)) {
-		PrintToChat(client, "You can't vote right now");
+	if (TF2_IsMvM() && IsAllowedToSpectate(client)) {
+		BlockFromSpectating(client);
+	}
+	
+	return Plugin_Continue;
+}
+
+public Action jointeam(int client, const char[] cmd, int argc)
+{
+	if (TF2_IsMvM() && !IsAllowedToSpectate(client)) 
+	{		
+		PrintToChat(client, "You are not allowed to spectate right now.");
 		return Plugin_Handled;
 	}
 	
 	return Plugin_Continue;
 }
 
+public Action callvote(int client, const char[] cmd, int argc)
+{
+	if (TF2_IsMvM())
+	{
+		BlockFromSpectating(client);
+		
+		if (!IsAllowedToVote(client))
+		{
+			PrintToChat(client, "You are not allowed to start a vote right now.");
+			return Plugin_Handled;
+		}
+	}
+	
+	return Plugin_Continue;
+}
 
 public Action vote(int client, const char[] cmd, int argc)
 {
-	if (TF2_IsMvM() && !IsAllowedToVote(client)) {
+	if (TF2_IsMvM() && !IsAllowedToVote(client)) 
+	{
+		PrintToChat(client, "You are not allowed to participate in votes right now.");
 		return Plugin_Handled;
 	}
 	
@@ -117,7 +162,7 @@ stock bool IsAllowedToVote(int client)
 	//Owned
 	if (TF2_GetClientTeam(client) == TFTeam_Spectator)
 		return false;
-		
+	
 	char steam64[64];
 	GetClientAuthId(client, AuthId_SteamID64, steam64, sizeof(steam64));
 	
@@ -129,7 +174,7 @@ stock bool IsAllowedToVote(int client)
 		return false;
 	}
 	
-	for (int i = 0; i <= g_aVoteBlockedUsers.Length; i++)
+	for (int i = 0; i < g_aVoteBlockedUsers.Length; i++)
 	{
 		char aSteam64[64];
 		g_aVoteBlockedUsers.GetString(i, aSteam64, sizeof(aSteam64));
@@ -149,6 +194,33 @@ stock void BlockFromVoting(int client)
 	GetClientAuthId(client, AuthId_SteamID64, steam64, sizeof(steam64));
 	
 	g_aVoteBlockedUsers.PushString(steam64);
+}
+
+stock bool IsAllowedToSpectate(int client)
+{
+	char steam64[64];
+	GetClientAuthId(client, AuthId_SteamID64, steam64, sizeof(steam64));
+	
+	for (int i = 0; i < g_aVoteBlockedUsers.Length; i++)
+	{
+		char aSteam64[64];
+		g_aVoteBlockedUsers.GetString(i, aSteam64, sizeof(aSteam64));
+		
+		if (!StrEqual(aSteam64, steam64))
+			continue;
+		
+		return false;
+	}
+	
+	return true;
+}
+
+stock void BlockFromSpectating(int client)
+{
+	char steam64[64];
+	GetClientAuthId(client, AuthId_SteamID64, steam64, sizeof(steam64));
+	
+	g_aSpectateBlockedUsers.PushString(steam64);
 }
 
 public Action OnClientSayCommand(int client, const char[] command, const char[] sArgs)
@@ -196,11 +268,6 @@ public Action OnClientSayCommand(int client, const char[] command, const char[] 
 	}
 	
 	return Plugin_Continue;
-}
-
-public Action WaveCompleted(Event event, const char[] name, bool dontBroadcast)
-{
-	g_aVoteBlockedUsers.Clear();
 }
 
 public Action Event_PlayerTeam(Event event, const char[] name, bool dontBroadcast)
@@ -270,7 +337,7 @@ public Action Event_PlayerTeam(Event event, const char[] name, bool dontBroadcas
 		TFTeam iOldTeam = view_as<TFTeam>(event.GetInt("oldteam"));
 		
 		//Don't show joining spectator from blue team or joining blue team
-		if (!IsFakeClient(client) && iOldTeam == TFTeam_Spectator && IsAllowedToVote(client))
+		if (!IsFakeClient(client) && iOldTeam == TFTeam_Spectator)
 		{
 			BlockFromVoting(client);
 			PrintToChat(client, "Your vote priviledges have been stripped");

@@ -6,7 +6,9 @@
 
 #pragma newdecls required
 
-bool g_bCanVote[MAXPLAYERS+1];
+//bool g_bCanVote[MAXPLAYERS+1];
+
+ArrayList g_aVoteBlockedUsers;
 
 ConVar g_hDifficulty;
 
@@ -14,30 +16,23 @@ ConVar g_hDifficulty;
 
 char g_sPermaBannedFromVoting[][] = 
 {
-	"76561198389562175",
+	"76561198389562175", 
 };
 
 public Plugin myinfo = 
 {
-	name = "[TF2] MvM Tweaks",
-	author = "Pelipoika",
-	description = "",
-	version = "1.0",
+	name = "[TF2] MvM Tweaks", 
+	author = "Pelipoika", 
+	description = "", 
+	version = "1.0", 
 	url = "http://www.sourcemod.net/plugins.php?author=Pelipoika&search=1"
 };
-
-public void OnClientPutInServer(int client)
-{
-	g_bCanVote[client] = true;
-}
 
 public void OnPluginStart()
 {
 	g_hDifficulty = CreateConVar("sm_mvmtweaks_difficulty", "1", "Auto scale difficulty");
 	g_hDifficulty.AddChangeHook(DifficultyScalingChanged);
 	
-	AddCommandListener(callvote, "callvote");
-	AddCommandListener(vote, "vote");
 	
 	HookEvent("player_team", Event_PlayerTeam, EventHookMode_Post);
 	HookEvent("mvm_wave_complete", WaveCompleted);
@@ -45,70 +40,27 @@ public void OnPluginStart()
 	
 	RegAdminCmd("sm_endrussians", Bye, ADMFLAG_BAN);
 	
-	//HookUserMessage(GetUserMessageId("VGUIMenu"), VGUIMenu, true);
-}
-/*
-public void OnMapEnd()
-{
-	ServerCommand("tf_bot_kick all");
-}*/
-
-public Action VGUIMenu(UserMsg msg_id, BfRead msg, const int[] players, int playersNum, bool reliable, bool init)
-{	
-	if(playersNum > 1)
-		return Plugin_Continue;
-		
-	if(IsFakeClient(players[0]))
-		return Plugin_Continue;
-
-	char string1[PLATFORM_MAX_PATH];
-	msg.ReadString(string1, PLATFORM_MAX_PATH);
+	AddCommandListener(callvote, "callvote");
+	AddCommandListener(vote, "vote");
 	
-	int bShow = msg.ReadByte();
-	//int byte2 = msg.ReadByte();
-	msg.ReadByte();
-	
-	char string2[PLATFORM_MAX_PATH];
-	msg.ReadString(string2, PLATFORM_MAX_PATH);
-	
-	char string3[PLATFORM_MAX_PATH];
-	msg.ReadString(string3, PLATFORM_MAX_PATH);
-	
-	//PrintToServer("\"%s\" bShow %i %i \"%s\" \"%s\" %N", string1, bShow, byte2, string2, string3, players[0]);
-	
-	if(StrEqual(string1, "info") && StrContains(string3, "#TF_Welcome") != -1)
-	{
-		ClientCommand(players[0], "autoteam");
-		
-		//PrintToServer(">Block %s", string1);
-		
-		RequestFrame(SendClassSelect, GetClientUserId(players[0]));
-		
-		return Plugin_Handled;
-	}
-	
-	return Plugin_Continue;
+	g_aVoteBlockedUsers = new ArrayList();
 }
 
-public void SendClassSelect(int userid)
+public void OnMapStart()
 {
-	int client = GetClientOfUserId(userid);
-	if(client == 0)
-		return;
-	
-	ShowVGUIPanel(client, TF2_GetClientTeam(client) == TFTeam_Red ? "class_red" : "class_blue");
+	g_aVoteBlockedUsers.Clear();
 }
 
 public Action Bye(int client, int args)
 {
 	for (int i = 1; i <= MaxClients; i++)
 	{
-		if(!IsClientInGame(i))
+		if (!IsClientInGame(i))
 			continue;
 		
 		QueryClientConVar(i, "cl_language", ConvarQueryResult, client);
 	}
-
+	
 	return Plugin_Handled;
 }
 
@@ -116,8 +68,8 @@ public void ConvarQueryResult(QueryCookie cookie, int client, ConVarQueryResult 
 {
 	int iIssuer = value;
 	
-	if(StrEqual(cvarValue, "russian") 
-	|| StrEqual(cvarValue, "polish"))
+	if (StrEqual(cvarValue, "russian")
+	 || StrEqual(cvarValue, "polish"))
 	{
 		CPrintToChat(iIssuer, "%N, is a {red}communist AND HAS BEEN {fullred}MUTED!", client);
 		BaseComm_SetClientMute(client, true);
@@ -133,72 +85,77 @@ void DifficultyScalingChanged(ConVar convar, const char[] oldValue, const char[]
 	ConVar cvarHealth = FindConVar("tf_populator_health_multiplier");
 	ConVar cvarDamage = FindConVar("tf_populator_damage_multiplier");
 	
-	if(StringToInt(newValue) <= 0)
+	if (StringToInt(newValue) <= 0)
 	{
 		cvarHealth.SetFloat(1.0);
 		cvarDamage.SetFloat(1.0);
 	}
 }
 
-public Action callvote(int client, const char[]cmd, int argc)
+public Action callvote(int client, const char[] cmd, int argc)
 {
-	char steam64[64];
-	GetClientAuthId(client, AuthId_SteamID64, steam64, sizeof(steam64));	
-
-	bool bFuckYou = false;
+	if (TF2_IsMvM() && !IsAllowedToVote(client)) {
+		PrintToChat(client, "You can't vote right now");
+		return Plugin_Handled;
+	}
 	
-	for (int i = 0; i < sizeof(g_sPermaBannedFromVoting); i++)
-	{
-		if(StrEqual(g_sPermaBannedFromVoting[i], steam64))
-		{
-			bFuckYou = true;
-			break;
-		}
-	}
-
-	if(TF2_IsMvM())
-	{
-		if(!g_bCanVote[client] || bFuckYou)
-		{
-			PrintToChat(client, "You can't vote right now");
-			return Plugin_Handled;
-		}
-	}
 	return Plugin_Continue;
 }
 
-public Action vote(int client, const char[]cmd, int argc)
-{
-	char steam64[64];
-	GetClientAuthId(client, AuthId_SteamID64, steam64, sizeof(steam64));	
 
-	bool bFuckYou = false;
+public Action vote(int client, const char[] cmd, int argc)
+{
+	if (TF2_IsMvM() && !IsAllowedToVote(client)) {
+		return Plugin_Handled;
+	}
+	
+	return Plugin_Continue;
+}
+
+stock bool IsAllowedToVote(int client)
+{
+	//Owned
+	if (TF2_GetClientTeam(client) == TFTeam_Spectator)
+		return false;
+		
+	char steam64[64];
+	GetClientAuthId(client, AuthId_SteamID64, steam64, sizeof(steam64));
 	
 	for (int i = 0; i < sizeof(g_sPermaBannedFromVoting); i++)
 	{
-		if(StrEqual(g_sPermaBannedFromVoting[i], steam64))
-		{
-			bFuckYou = true;
-			break;
-		}
+		if (!StrEqual(g_sPermaBannedFromVoting[i], steam64))
+			continue;
+		
+		return false;
 	}
-
-	if(TF2_IsMvM())
+	
+	for (int i = 0; i <= g_aVoteBlockedUsers.Length; i++)
 	{
-		if(!g_bCanVote[client] || TF2_GetClientTeam(client) == TFTeam_Spectator)
-		{
-			return Plugin_Handled;
-		}
+		char aSteam64[64];
+		g_aVoteBlockedUsers.GetString(i, aSteam64, sizeof(aSteam64));
+		
+		if (!StrEqual(aSteam64, steam64))
+			continue;
+		
+		return false;
 	}
-	return Plugin_Continue;
+	
+	return true;
+}
+
+stock void BlockFromVoting(int client)
+{
+	char steam64[64];
+	GetClientAuthId(client, AuthId_SteamID64, steam64, sizeof(steam64));
+	
+	g_aVoteBlockedUsers.PushString(steam64);
 }
 
 public Action OnClientSayCommand(int client, const char[] command, const char[] sArgs)
 {
 	//Оба гибусы
-	Regex rgx = new Regex("[\xd0\x80-\xd3\xbf]+", PCRE_CASELESS|PCRE_UTF8);
+	Regex rgx = new Regex("[\xd0\x80-\xd3\xbf]+", PCRE_CASELESS | PCRE_UTF8);
 	
-	int substrings = 0
 	int skip_text = 0;
 	
 	char buffer[PLATFORM_MAX_PATH];
@@ -208,29 +165,29 @@ public Action OnClientSayCommand(int client, const char[] command, const char[] 
 	
 	bool bFound = false;
 	
-	while((substrings = rgx.Match(sArgs[skip_text])) > 0) // When the first string of input text match with expression pattern.
-    {
-        // Pick whole string matching with expression pattern.
-        if( !rgx.GetSubString(0, buffer, sizeof(buffer)) )
-        {
-            break;
-        }
-        
-        char replace[64];
-        Format(replace, sizeof(replace), "{red}%s{default}", buffer);
-        
-        ReplaceString(out, PLATFORM_MAX_PATH, buffer, replace);
+	while ((rgx.Match(sArgs[skip_text])) > 0) // When the first string of input text match with expression pattern.
+	{
+		// Pick whole string matching with expression pattern.
+		if (!rgx.GetSubString(0, buffer, sizeof(buffer)))
+		{
+			break;
+		}
 		
-        // We do not want regex to hit the same part of the input text. Skip the first piece of input text in the next cycle.
-        skip_text += StrContains(sArgs[skip_text], buffer);
-        skip_text += strlen(buffer);
-        
-        bFound = true;
-    }
-    
+		char replace[64];
+		Format(replace, sizeof(replace), "{red}%s{default}", buffer);
+		
+		ReplaceString(out, PLATFORM_MAX_PATH, buffer, replace);
+		
+		// We do not want regex to hit the same part of the input text. Skip the first piece of input text in the next cycle.
+		skip_text += StrContains(sArgs[skip_text], buffer);
+		skip_text += strlen(buffer);
+		
+		bFound = true;
+	}
+	
 	delete rgx;
 	
-	if(bFound)
+	if (bFound)
 	{
 		CPrintToChat(client, "{lightblue}Your message was not sent because it contained banned letters");
 		CPrintToChat(client, "%s", out);
@@ -239,112 +196,83 @@ public Action OnClientSayCommand(int client, const char[] command, const char[] 
 	}
 	
 	return Plugin_Continue;
-	
-	/*
-		// If regex expression pattern include capturing parentheses = /(x)(x)/
-		// The matching strings are stored in array, variable substrings contains the number of strings
-		for(int index = 1; index < substrings; index++)
-		{
-			if( !rgx.GetSubString(index, buffer, sizeof(buffer)) )
-			{
-			    break;
-			}
-			
-			PrintToChat(client, ">> %s", buffer);
-			
-			ReplaceString(out, PLATFORM_MAX_PATH, buffer, "{red}CANCER{default}");
-		}
-	*/
 }
 
 public Action WaveCompleted(Event event, const char[] name, bool dontBroadcast)
 {
-	if(TF2_IsMvM())
-	{
-		for(int i = 1; i <= MaxClients; i++)
-		{
-			if(IsClientInGame(i) && TF2_GetClientTeam(i) != TFTeam_Spectator)
-			{
-				if(!g_bCanVote[i])
-				{
-					PrintToChat(i, "You may now vote again.");
-					g_bCanVote[i] = true;
-				}
-			}
-		}
-	}
+	g_aVoteBlockedUsers.Clear();
 }
 
 public Action Event_PlayerTeam(Event event, const char[] name, bool dontBroadcast)
 {
-	if(TF2_IsMvM())
+	if (TF2_IsMvM())
 	{
 		int client = GetClientOfUserId(event.GetInt("userid"));
 		
 		int iDefenders = GetTeamClientCount(view_as<int>(TFTeam_Red));
-		if(iDefenders > 0 && g_hDifficulty.BoolValue)
+		if (iDefenders > 0 && g_hDifficulty.BoolValue)
 		{
 			ConVar cvarHealth = FindConVar("tf_populator_health_multiplier");
 			ConVar cvarDamage = FindConVar("tf_populator_damage_multiplier");
 			
 			float flOldValue = cvarHealth.FloatValue;
-	
-			switch(iDefenders)
+			
+			switch (iDefenders)
 			{
-				case 1: 
+				case 1:
 				{
 					cvarHealth.SetFloat(0.5);
 					cvarDamage.SetFloat(0.5);
 				}
-				case 2:	
+				case 2:
 				{
 					cvarHealth.SetFloat(0.5);
 					cvarDamage.SetFloat(0.5);
 				}
-				case 3: 
+				case 3:
 				{
 					cvarHealth.SetFloat(0.5);
 					cvarDamage.SetFloat(0.5);
 				}
-				case 4: 
+				case 4:
 				{
 					cvarHealth.SetFloat(0.666);
 					cvarDamage.SetFloat(0.666);
 				}
-				case 5: 
+				case 5:
 				{
 					cvarHealth.SetFloat(0.833);
 					cvarDamage.SetFloat(0.833);
 				}
-				case 6: 
+				case 6:
 				{
 					cvarHealth.SetFloat(1.0);
 					cvarDamage.SetFloat(1.0);
 				}
-				default: 
+				default:
 				{
 					cvarHealth.SetFloat(1.0);
 					cvarDamage.SetFloat(1.0);
 				}
 			}
-	
-			if(flOldValue < cvarHealth.FloatValue)
+			
+			if (flOldValue < cvarHealth.FloatValue)
 			{
 				CPrintToChatAll("Increasing difficulty to accommodate current player count %.0f%% -> %.0f%%", flOldValue * 100, cvarHealth.FloatValue * 100);
 			}
-			else if(flOldValue > cvarHealth.FloatValue)
+			else if (flOldValue > cvarHealth.FloatValue)
 			{
 				CPrintToChatAll("Lowering difficulty to accommodate current player count %.0f%% -> %.0f%%", flOldValue * 100, cvarHealth.FloatValue * 100);
 			}
 		}
 		
-	//	TFTeam iTeam = view_as<TFTeam>(event.GetInt("team"));
+		//	TFTeam iTeam = view_as<TFTeam>(event.GetInt("team"));
 		TFTeam iOldTeam = view_as<TFTeam>(event.GetInt("oldteam"));
 		
 		//Don't show joining spectator from blue team or joining blue team
-		if(!IsFakeClient(client) && iOldTeam == TFTeam_Spectator && g_bCanVote[client])
+		if (!IsFakeClient(client) && iOldTeam == TFTeam_Spectator && IsAllowedToVote(client))
 		{
-			g_bCanVote[client] = false;
+			BlockFromVoting(client);
 			PrintToChat(client, "Your vote priviledges have been stripped");
 		}
 	}
@@ -355,4 +283,4 @@ public Action Event_PlayerTeam(Event event, const char[] name, bool dontBroadcas
 stock bool TF2_IsMvM()
 {
 	return view_as<bool>(GameRules_GetProp("m_bPlayingMannVsMachine"));
-}
+} 

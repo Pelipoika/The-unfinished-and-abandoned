@@ -15,11 +15,6 @@ ConVar g_hDifficulty;
 
 // /[\x{0410}-\x{042F}]+/umi
 
-char g_sPermaBannedFromVoting[][] = 
-{
-	"76561198389562175", 
-};
-
 public Plugin myinfo = 
 {
 	name = "[TF2] MvM Tweaks", 
@@ -87,12 +82,15 @@ public void ConvarQueryResult(QueryCookie cookie, int client, ConVarQueryResult 
 	int iIssuer = value;
 	
 	if (StrEqual(cvarValue, "russian")
-		 || StrEqual(cvarValue, "polish"))
+	 || StrEqual(cvarValue, "polish"))
 	{
-		CPrintToChat(iIssuer, "%N, is a {red}communist AND HAS BEEN {fullred}MUTED!", client);
+		if(iIssuer > 0)
+		{
+			CPrintToChat(iIssuer, "%N, is a {red}communist AND HAS BEEN {fullred}MUTED!", client);
+		}
 		BaseComm_SetClientMute(client, true);
 	}
-	else
+	else if(iIssuer > 0)
 	{
 		CPrintToChat(iIssuer, "%N - {lime}%s{default}, is a {lime}okay i guess", client, cvarValue);
 	}
@@ -165,14 +163,6 @@ stock bool IsAllowedToVote(int client)
 	
 	char steam64[64];
 	GetClientAuthId(client, AuthId_SteamID64, steam64, sizeof(steam64));
-	
-	for (int i = 0; i < sizeof(g_sPermaBannedFromVoting); i++)
-	{
-		if (!StrEqual(g_sPermaBannedFromVoting[i], steam64))
-			continue;
-		
-		return false;
-	}
 	
 	for (int i = 0; i < g_aVoteBlockedUsers.Length; i++)
 	{
@@ -337,7 +327,7 @@ public Action Event_PlayerTeam(Event event, const char[] name, bool dontBroadcas
 		TFTeam iOldTeam = view_as<TFTeam>(event.GetInt("oldteam"));
 		
 		//Don't show joining spectator from blue team or joining blue team
-		if (!IsFakeClient(client) && iOldTeam == TFTeam_Spectator)
+		if (!IsFakeClient(client) && iOldTeam == TFTeam_Spectator && IsAllowedToVote(client))
 		{
 			BlockFromVoting(client);
 			PrintToChat(client, "Your vote priviledges have been stripped");

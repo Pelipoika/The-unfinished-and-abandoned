@@ -872,9 +872,9 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		ShowSyncHudText(client, g_hHudShotCounter, strObservers);
 	}
 
-	if(g_bBunnyHop[client] || (!(GetEntityFlags(client) & FL_FAKECLIENT) && buttons & IN_JUMP))
+	if(g_bBunnyHop[client] && (buttons & IN_JUMP) && (GetEntityFlags(client) & FL_ONGROUND))
 	{
-		if((GetEntityFlags(client) & FL_ONGROUND))
+		if(!GameRules_GetProp("m_bPlayingMannVsMachine") && GetClientTeam(client) != 3)
 		{
 			int nOldButtons = GetEntProp(client, Prop_Data, "m_nOldButtons");
 			SetEntProp(client, Prop_Data, "m_nOldButtons", (nOldButtons &= ~(IN_JUMP|IN_DUCK)));

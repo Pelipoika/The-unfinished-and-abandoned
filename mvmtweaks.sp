@@ -66,34 +66,31 @@ public Action WaveCompleted(Event event, const char[] name, bool dontBroadcast)
 
 public Action Bye(int client, int args)
 {
+	char cl_language[32];
+
 	for (int i = 1; i <= MaxClients; i++)
 	{
 		if (!IsClientInGame(i))
 			continue;
 		
-		QueryClientConVar(i, "cl_language", ConvarQueryResult, client);
+		if(IsFakeClient(i))
+			continue;
+		
+		GetClientInfo(i, "cl_language", cl_language, sizeof(cl_language));
+		
+		if (StrEqual(cl_language, "russian") || StrEqual(cl_language, "polish"))
+		{
+			ReplyToCommand(client, "\"%N\" is a communist AND HAS BEEN MUTED!", i);
+			
+			BaseComm_SetClientMute(i, true);
+		}
+		else
+		{
+			ReplyToCommand(client, "\"%N\" - \"%s\" is okay i guess", i, cl_language);
+		}
 	}
 	
 	return Plugin_Handled;
-}
-
-public void ConvarQueryResult(QueryCookie cookie, int client, ConVarQueryResult result, const char[] cvarName, const char[] cvarValue, any value)
-{
-	int iIssuer = value;
-	
-	if (StrEqual(cvarValue, "russian")
-	 || StrEqual(cvarValue, "polish"))
-	{
-		if(iIssuer > 0)
-		{
-			CPrintToChat(iIssuer, "%N, is a {red}communist AND HAS BEEN {fullred}MUTED!", client);
-		}
-		BaseComm_SetClientMute(client, true);
-	}
-	else if(iIssuer > 0)
-	{
-		CPrintToChat(iIssuer, "%N - {lime}%s{default}, is a {lime}okay i guess", client, cvarValue);
-	}
 }
 
 void DifficultyScalingChanged(ConVar convar, const char[] oldValue, const char[] newValue)
@@ -166,6 +163,9 @@ stock bool IsAllowedToVote(int client)
 {
 	//Owned
 	if (TF2_GetClientTeam(client) == TFTeam_Spectator)
+		return false;
+	
+	if (TF2_GetClientTeam(client) == TFTeam_Blue)
 		return false;
 	
 	char steam64[64];

@@ -9,9 +9,9 @@ public void OnPluginStart()
 {
 	g_CritBucket = CreateHudSynchronizer();
 	
-	CreateTimer(0.1, Timer_UpdateBucketHUD, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+	CreateTimer(0.1, Timer_UpdateBucketHUD, _, TIMER_REPEAT);
 	
-	RegAdminCmd("sm_critbucket", Command_CritBucketInfo, ADMFLAG_BAN);
+	RegAdminCmd("sm_critbucket", Command_CritBucketInfo, 0);
 }
 
 public void OnClientPutInServer(int client)
@@ -29,12 +29,13 @@ public Action Timer_UpdateBucketHUD(Handle timer, any data)
 		if(!IsClientInGame(i))
 			continue;
 			
-		if(IsFakeClient(i))
-			continue;
+		int iOriginal = i;
 			
-		if(!IsPlayerAlive(i))
-			continue;
-		
+		//Print observed targets crit info.
+		int iObserved = GetEntPropEnt(i, Prop_Send, "m_hObserverTarget");
+		if(GetClientTeam(i) == 1 && iObserved > 0 && iObserved <= MaxClients && IsClientInGame(iObserved))
+			i = iObserved;
+			
 		int iActiveWeapon = GetEntPropEnt(i, Prop_Data, "m_hActiveWeapon");
 		if(!IsValidEntity(iActiveWeapon))
 			return Plugin_Handled;
@@ -57,7 +58,7 @@ public Action Timer_UpdateBucketHUD(Handle timer, any data)
 		int m_nCritSeedRequests = GetEntData(iActiveWeapon, inCritSeedRequests_Offset);	//1436
 		
 		SetHudTextParams(1.0, 0.5, 0.15, 0, 255, 0, 0, 0, 0.0, 0.0, 0.0);
-		ShowSyncHudText(i, g_CritBucket, "Crit Bucket Info\nTokens: %.1f / %.1f (%.0f %%)\nDefault: %.1f\nCap: %.1f\nBottom: %.1f\nm_nCritChecks %i\nm_nCritSeedRequests %i", m_flCritTokenBucket, flCap, flPercentage, flDefault, flCap, flBottom, m_nCritChecks, m_nCritSeedRequests);
+		ShowSyncHudText(iOriginal, g_CritBucket, "Crit Bucket Info\nTokens %.1f / %.1f (%.0f %%)\nDefault %.1f\nCap %.1f\nBottom %.1f\nm_nCritChecks %i\nm_nCritSeedRequests %i", m_flCritTokenBucket, flCap, flPercentage, flDefault, flCap, flBottom, m_nCritChecks, m_nCritSeedRequests);
 	}
 	
 	return Plugin_Continue;
@@ -98,7 +99,7 @@ public float clamp(float a, float b, float c) { return (a > c ? c : (a < b ? b :
 */
 public Action Command_CritBucketInfo(int client, int args)
 {
-	if(client <= 0 || client > MaxClients || !IsClientInGame(client) || !IsPlayerAlive(client))
+	if(client <= 0 || client > MaxClients || !IsClientInGame(client))
 		return Plugin_Handled;
 
 	g_bWantsTheBucket[client] = !g_bWantsTheBucket[client];

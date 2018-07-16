@@ -40,6 +40,13 @@ public void OnPluginStart()
 	
 	RegAdminCmd("sm_endrussians", Bye, ADMFLAG_BAN);
 	
+	RegAdminCmd("sm_manualspectatorban", SpecBan, ADMFLAG_BAN);
+	RegAdminCmd("sm_specban",            SpecBan, ADMFLAG_BAN);
+	RegAdminCmd("sm_spectateban",        SpecBan, ADMFLAG_BAN);
+	RegAdminCmd("sm_spectorban",         SpecBan, ADMFLAG_BAN);
+	
+	LoadTranslations("common.phrases");
+	
 	AddCommandListener(callvote, "callvote");
 	AddCommandListener(vote, "vote");
 	
@@ -63,37 +70,83 @@ public Action WaveCompleted(Event event, const char[] name, bool dontBroadcast)
 	g_aSpectateBlockedUsers.Clear();
 }
 
+public Action SpecBan(int client, int args)
+{
+	char arg1[32];
+	
+	/* Get the first argument */
+	GetCmdArg(1, arg1, sizeof(arg1));
+	
+	/**
+	 * target_name - stores the noun identifying the target(s)
+	 * target_list - array to store clients
+	 * target_count - variable to store number of clients
+	 * tn_is_ml - stores whether the noun must be translated
+	 */
+	char target_name[MAX_TARGET_LENGTH];
+	int target_list[MAXPLAYERS], target_count;
+	bool tn_is_ml;
+	
+	if ((target_count = ProcessTargetString(
+			arg1,
+			client,
+			target_list,
+			MAXPLAYERS,
+			COMMAND_FILTER_NO_BOTS, /* Only allow alive players */
+			target_name,
+			sizeof(target_name),
+			tn_is_ml)) <= 0)
+	{
+		/* This function replies to the admin with a failure message */
+		ReplyToTargetError(client, target_count);
+		return Plugin_Handled;
+	}
+	
+	for (int i = 0; i < target_count; i++)
+	{
+		BlockFromSpectating(target_list[i]);
+		LogAction(client, target_list[i], "\"%L\" blocked \"%L\" from spectating", client, target_list[i]);
+	}
+	
+	if (tn_is_ml)
+	{
+		ShowActivity2(client, "[SM] ", "Blocked %t from spectating!", target_name);
+	}
+	else
+	{
+		ShowActivity2(client, "[SM] ", "Blocked %s from spectating!", target_name);
+	}
+
+	return Plugin_Handled;
+}
 
 public Action Bye(int client, int args)
 {
+	char cl_language[32];
+
 	for (int i = 1; i <= MaxClients; i++)
 	{
 		if (!IsClientInGame(i))
 			continue;
 		
-		QueryClientConVar(i, "cl_language", ConvarQueryResult, client);
+		if(IsFakeClient(i))
+			continue;
+		
+		GetClientInfo(i, "cl_language", cl_language, sizeof(cl_language));
+		
+		if (StrEqual(cl_language, "russian") || StrEqual(cl_language, "polish"))
+		{
+			ReplyToCommand(client, "\"%N\" is a communist AND HAS BEEN MUTED!", i);
+			
+			BaseComm_SetClientMute(i, true);
+		}
+		else
+		{
+			ReplyToCommand(client, "\"%N\" - \"%s\" is okay i guess", i, cl_language);
+		}
 	}
 	
 	return Plugin_Handled;
-}
-
-public void ConvarQueryResult(QueryCookie cookie, int client, ConVarQueryResult result, const char[] cvarName, const char[] cvarValue, any value)
-{
-	int iIssuer = value;
-	
-	if (StrEqual(cvarValue, "russian")
-	 || StrEqual(cvarValue, "polish"))
-	{
-		if(iIssuer > 0)
-		{
-			CPrintToChat(iIssuer, "%N, is a {red}communist AND HAS BEEN {fullred}MUTED!", client);
-		}
-		BaseComm_SetClientMute(client, true);
-	}
-	else if(iIssuer > 0)
-	{
-		CPrintToChat(iIssuer, "%N - {lime}%s{default}, is a {lime}okay i guess", client, cvarValue);
-	}
 }
 
 void DifficultyScalingChanged(ConVar convar, const char[] oldValue, const char[] newValue)
@@ -168,6 +221,9 @@ stock bool IsAllowedToVote(int client)
 	if (TF2_GetClientTeam(client) == TFTeam_Spectator)
 		return false;
 	
+	if (TF2_GetClientTeam(client) == TFTeam_Blue)
+		return false;
+	
 	char steam64[64];
 	GetClientAuthId(client, AuthId_SteamID64, steam64, sizeof(steam64));
 	
@@ -218,6 +274,12 @@ stock void BlockFromSpectating(int client)
 	GetClientAuthId(client, AuthId_SteamID64, steam64, sizeof(steam64));
 	
 	g_aSpectateBlockedUsers.PushString(steam64);
+	
+	//Force them out of spectator team if they are spectating.
+	if(TF2_GetClientTeam(client) == TFTeam_Spectator)
+	{
+		FakeClientCommand(client, "autoteam");
+	}
 }
 
 public Action OnClientSayCommand(int client, const char[] command, const char[] sArgs)

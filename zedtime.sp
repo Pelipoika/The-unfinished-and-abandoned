@@ -72,7 +72,7 @@ public void OnPluginStart()
 			if(StrEqual(strConCommand, "disguise") || StrEqual(strConCommand, "lastdisguise"))
 				continue;
 			
-		//	PrintToServer("%i %s", bIsCommand, strConCommand);
+			//PrintToServer("%i %s", bIsCommand, strConCommand);
 			AddCommandListener(OnCheatCommand, strConCommand);
 			iHooks++;
 		}
@@ -127,13 +127,17 @@ public Action OnCheatCommand(int client, const char[] command, int argc)
 	if(client <= 0)
 		return Plugin_Continue;
 		
+	//Allow admins to cheat
+	//if(CheckCommandAccess(client, "", ADMFLAG_BAN, true))
+		//return Plugin_Continue;
+		
 	//if(!g_bZedTime)
 	//	return Plugin_Continue;
 	
 	char strArgs[PLATFORM_MAX_PATH];
 	GetCmdArgString(strArgs, PLATFORM_MAX_PATH);
 
-	PrintToChatAll("OnCheatCommand %N %s %s", client, command, strArgs);
+	PrintToServer("OnCheatCommand %N %s %s", client, command, strArgs);
 	
 	return Plugin_Handled;
 }
@@ -202,20 +206,20 @@ public void Event_Death(Handle hEvent, char[] name, bool dontBroadcast)
 		{
 			if(HammerUnitsToMeters(flDistanceToKill) < 25) {
 				// - if ZED killed by headshot (distance < 25 meters)		
-				flChance = 3.0;
+				flChance = 5.0;
 			} else {
 				// - if ZED killed by headshot (distance > 25 meters)		
-				flChance = 5.0;
+				flChance = 2.5;
 			}
 		}
 		else
 		{
 			if(HammerUnitsToMeters(flDistanceToKill) < 3) {
 				//Player kill AI ZED (distance < 3 meters)		
-				flChance += 5.0;
+				flChance = 5.0;
 			} else {
 				//Player kill AI ZED (distance > 3 meters)		
-				flChance += 2.5;
+				flChance = 2.5;
 			}
 		}
 		
@@ -347,7 +351,7 @@ stock void EnableSlowmo(int activator, float ZedChance)
 		g_flZedTime = GetEngineTime() + SLOWMO_DURATION;
 		
 		//Minimum interval between 2 ZED Times		
-		g_glZedTimeCooldown = GetEngineTime() + 10.0;
+		g_glZedTimeCooldown = GetEngineTime() + 30.0;
 	}
 }
 

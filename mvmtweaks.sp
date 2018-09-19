@@ -38,10 +38,13 @@ public void OnPluginStart()
 	HookEvent("mvm_wave_complete", WaveCompleted);
 	HookEvent("mvm_wave_failed", WaveCompleted);
 	
+	
+	//The real reason communism failed
 	RegAdminCmd("sm_endrussians", Bye, ADMFLAG_BAN);
 	
-	RegAdminCmd("sm_manualspectatorban", SpecBan, ADMFLAG_BAN);
+	
 	RegAdminCmd("sm_specban",            SpecBan, ADMFLAG_BAN);
+	RegAdminCmd("sm_blockspec",          SpecBan, ADMFLAG_BAN);
 	RegAdminCmd("sm_spectateban",        SpecBan, ADMFLAG_BAN);
 	RegAdminCmd("sm_spectorban",         SpecBan, ADMFLAG_BAN);
 	

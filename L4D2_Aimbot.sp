@@ -36,31 +36,49 @@ public Plugin myinfo =
 
 Handle g_hGetBonePosition;
 
+Address TheZombieManager;
+
 int g_iOffsetStudioHdr;
 
 //TODO
 
 public void OnPluginStart()
 {
-	RegAdminCmd("sm_hacks", Command_Trigger, 0);
+	RegAdminCmd("sm_hacks", Command_Trigger, ADMFLAG_BAN);
+	
+	RegAdminCmd("sm_zombiemanager", Command_TheZombieManager, 0);
 	
 	for (int i = 1; i <= MaxClients; i++) {	
 		OnClientPutInServer(i); 
 	}
 	
-	//Both in
+	Handle hConf = LoadGameConfigFile("l4d2_aimbot");
+	
 	// STR: "rhand", "ValveBiped.Bip01_L_Hand", "lhand", "ValveBiped.Bip01_R_Hand"
 	//void CBaseAnimating::GetBonePosition ( int iBone, Vector &origin, QAngle &angles )
 	StartPrepSDKCall(SDKCall_Entity);
-	PrepSDKCall_SetSignature(SDKLibrary_Server, "\x55\x8B\xEC\x83\xEC\x34\xA1\x2A\x2A\x2A\x2A\x33\xC5\x89\x45\xFC\x53\x8B\x5D\x10", 20);
+	PrepSDKCall_SetFromConf(hConf, SDKConf_Signature, "CBaseAnimating::GetBonePosition");
 	PrepSDKCall_AddParameter(SDKType_PlainOldData, SDKPass_Plain);
 	PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_ByRef, _, VENCODE_FLAG_COPYBACK);
 	PrepSDKCall_AddParameter(SDKType_QAngle, SDKPass_ByRef, _, VENCODE_FLAG_COPYBACK);
 	if ((g_hGetBonePosition = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for CBaseAnimating::GetBonePosition signature!");
 	
+	//Get TheZombieManager ptr
+	TheZombieManager = GameConfGetAddress(hConf, "TheZombieManager");
+	PrintToServer("Found \"TheZombieManager\" @ 0x%X", TheZombieManager);
+	
+	delete hConf;
+	
 	HookEvent("player_death", Event_Kill, EventHookMode_Post);
 
 	g_iOffsetStudioHdr = FindSendPropInfo("CTerrorPlayer", "m_flexWeight") - 552;
+}
+
+public Action Command_TheZombieManager(int client, int argc)
+{
+	ReplyToCommand(client, "\"TheZombieManager\" is @ 0x%X", TheZombieManager);
+
+	return Plugin_Handled;
 }
 
 /*
@@ -379,11 +397,14 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		int iAw = GetActiveWeapon(client);
 	
 		//Not holding a weapon
-		if(!IsValidEntity(iAw))
+		if(!IsValidEntity(iAw) || IsPlayerReloading(client))
 			return Plugin_Continue;
 		
 		//Not a shooty weapon
-		if(GetPlayerWeaponSlot(client, 0) != iAw && GetPlayerWeaponSlot(client, 1) != iAw)
+		if(!HasEntProp(iAw, Prop_Send, "m_iPrimaryAmmoType") 
+		|| GetEntProp(iAw, Prop_Send, "m_iPrimaryAmmoType") == -1
+		|| !HasEntProp(iAw, Prop_Data, "m_iClip1") 
+		|| GetEntProp(iAw, Prop_Data, "m_iClip1") <= 0)
 			return Plugin_Continue;
 		
 		//Remove recoil

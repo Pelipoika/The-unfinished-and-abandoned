@@ -36,7 +36,7 @@ int g_iKillStack;
 static const float SLOWMO_AMOUNT = 0.3;
 
 //ZED Time duration
-static const float SLOWMO_DURATION = 3.0;
+static const float SLOWMO_DURATION = 5.0;
 
 //ZED Time lerp amount
 static const float SLOWMO_CHANGE_AMOUNT = 2.0;
@@ -112,12 +112,17 @@ public Action Command_JumpToWave(int client, int args)
 
 public Action Command_ToggleSlowmo(int client, int args)
 {
+	char time[16];
+	GetCmdArgString(time, sizeof(time));
+	
+	float flCustomTime = StringToFloat(time);
+	
 	g_glZedTimeCooldown = 0.0;
 	
 	if(g_bZedTime)
 		DisableSlowmo();
 	else
-		EnableSlowmo(client, 100.0);
+		EnableSlowmo(client, 100.0, flCustomTime);
 		
 	return Plugin_Handled;
 }
@@ -321,7 +326,7 @@ public void OnGameFrame()
 	}
 }
 
-stock void EnableSlowmo(int activator, float ZedChance)
+stock void EnableSlowmo(int activator, float ZedChance, float flTimeOverride = 0.0)
 {
 	if(g_glZedTimeCooldown <= GetEngineTime() && GetRandomFloat(0.0, 100.0) <= ZedChance)
 	{
@@ -348,7 +353,7 @@ stock void EnableSlowmo(int activator, float ZedChance)
 		g_flTimeScaleGoal = SLOWMO_AMOUNT;
 		
 		//ZED Time duration		
-		g_flZedTime = GetEngineTime() + SLOWMO_DURATION;
+		g_flZedTime = GetEngineTime() + ((flTimeOverride > 0.0) ? flTimeOverride : SLOWMO_DURATION);
 		
 		//Minimum interval between 2 ZED Times		
 		g_glZedTimeCooldown = GetEngineTime() + 30.0;

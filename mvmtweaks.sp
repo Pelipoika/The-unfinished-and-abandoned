@@ -287,7 +287,7 @@ stock void BlockFromSpectating(int client)
 
 public Action OnClientSayCommand(int client, const char[] command, const char[] sArgs)
 {
-	//Оба гибусы
+	//Test string :Оба гибусы
 	Regex rgx = new Regex("[\xd0\x80-\xd3\xbf]+", PCRE_CASELESS | PCRE_UTF8);
 	
 	int skip_text = 0;
@@ -299,7 +299,7 @@ public Action OnClientSayCommand(int client, const char[] command, const char[] 
 	
 	bool bFound = false;
 	
-	while ((rgx.Match(sArgs[skip_text])) > 0) // When the first string of input text match with expression pattern.
+	while (strlen(sArgs[skip_text]) > 0 && rgx.Match(sArgs[skip_text])) // When the first string of input text match with expression pattern.
 	{
 		// Pick whole string matching with expression pattern.
 		if (!rgx.GetSubString(0, buffer, sizeof(buffer)))

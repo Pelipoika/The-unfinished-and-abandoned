@@ -356,7 +356,7 @@ stock void EnableSlowmo(int activator, float ZedChance, float flTimeOverride = 0
 		g_flZedTime = GetEngineTime() + ((flTimeOverride > 0.0) ? flTimeOverride : SLOWMO_DURATION);
 		
 		//Minimum interval between 2 ZED Times		
-		g_glZedTimeCooldown = GetEngineTime() + 30.0;
+		g_glZedTimeCooldown = GetEngineTime() + GetRandomFloat(30.0, 120.0);
 	}
 }
 

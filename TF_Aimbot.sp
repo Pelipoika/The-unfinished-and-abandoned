@@ -21,6 +21,7 @@ int g_iAimType[MAXPLAYERS + 1];
 float g_flAimFOV[MAXPLAYERS + 1];
 
 bool g_bAutoShoot[MAXPLAYERS + 1];
+bool g_bMedicPriority[MAXPLAYERS + 1];
 bool g_bSilentAim[MAXPLAYERS + 1];
 bool g_bBunnyHop[MAXPLAYERS + 1];
 bool g_bHeadshots[MAXPLAYERS + 1];
@@ -100,6 +101,7 @@ public void OnClientPutInServer(int client)
 {
 	g_bAimbot[client] = false;
 	g_bAutoShoot[client] = false;
+	g_bMedicPriority[client] = false;
 	g_bSilentAim[client] = false;
 	g_bAutoBackstab[client] = false;
 	g_bForceFOV[client] = false;
@@ -168,12 +170,17 @@ stock void DisplayAimbotMenuAtItem(int client, int page = 0)
 		menu.AddItem("5", "Headshots only: On");
 	else
 		menu.AddItem("5", "Headshots only: Off");
-		
-	if(g_bAutoBackstab[client])
-		menu.AddItem("6", "Auto Backstab (Ignores Settings): On");
+	
+	if(g_bMedicPriority[client])
+		menu.AddItem("6", "Prioritize healers: On");
 	else
-		menu.AddItem("6", "Auto Backstab (Ignores Settings): Off");
-		
+		menu.AddItem("6", "Prioritize healers: Off");
+	
+	if(g_bAutoBackstab[client])
+		menu.AddItem("7", "Auto Backstab (Ignores Settings): On");
+	else
+		menu.AddItem("7", "Auto Backstab (Ignores Settings): Off");
+	
 	menu.ExitButton = true;
 	menu.ExitBackButton = true;
 	menu.DisplayAt(client, page, MENU_TIME_FOREVER);
@@ -259,7 +266,12 @@ public int MenuAimbotHandler(Menu menu, MenuAction action, int param1, int param
 				
 				SendItemInfo(param1, "Aimbot will only target head");
 			}
-			case 6: 
+			case 6:
+			{
+				g_bMedicPriority[param1] = !g_bMedicPriority[param1];
+				SendItemInfo(param1, "When choosing a target, the aimbot will shoot target their medics before the target itself.");
+			}
+			case 7: 
 			{
 				g_bAutoBackstab[param1] = !g_bAutoBackstab[param1];
 				
@@ -270,7 +282,7 @@ public int MenuAimbotHandler(Menu menu, MenuAction action, int param1, int param
 				}
 				
 				SendItemInfo(param1, "Automatically backstab enemy if possible.");
-			}
+			}	
 		}
 		
 		DisplayAimbotMenuAtItem(param1, GetMenuSelectionPosition());
@@ -584,10 +596,39 @@ float[] SelectBestTargetPos(int client, const float oldAngles[3], int &iBestEnem
 		
 		float vVisiblePos[3]; 
 		
-		//Not visible at all.
-		if(!GetBestHitBox(client, i, vVisiblePos))
-			continue;
-			
+		bool bFoundMedic = false;
+		
+		//Before we check the target itself, check their medics.
+		if(g_bMedicPriority[client])
+		{
+			for (int h = 0; h < GetEntProp(i, Prop_Send, "m_nNumHealers"); h++)
+			{
+				int iHealerIndex = GetHealerByIndex(i, h);
+				
+				//Not a player
+				if(iHealerIndex > MaxClients)
+					continue;
+				
+				if(!GetBestHitBox(client, iHealerIndex, vVisiblePos))
+					continue;
+				
+				//PrintToServer("[%.2f] \"%N\" <- healed by visible player \"%N\" [%i]", GetGameTime(), i, iHealerIndex, iHealerIndex);
+				
+				//Found medic to target.
+				bFoundMedic = true;
+				break;
+			}
+		}
+		
+		//No medics found for target.
+		if(!bFoundMedic) 
+		{
+			//Target isnt visible either :/
+			if(!GetBestHitBox(client, i, vVisiblePos))
+				continue;
+		}
+	
+		
 		if(g_iAimType[client] == AIM_FOV)
 		{
 			nearest = GetFov(oldAngles, CalcAngle(GetEyePosition(client), GetEyePosition(i)));
@@ -1120,6 +1161,16 @@ stock float[] CalcAngle(float src[3], float dst[3])
 stock float GetDistance(float src[3], float dst[3])
 {
 	return SquareRoot(Pow(src[0] - dst[0], 2.0) + Pow(src[1] - dst[1], 2.0) + Pow(src[2] - dst[2], 2.0));
+}
+
+stock int GetHealerByIndex(int client, int index)
+{
+	int m_aHealers = FindSendPropInfo("CTFPlayer", "m_nNumHealers") + 12;
+	
+	Address m_Shared = GetEntityAddress(client) + Address(m_aHealers);
+	Address aHealers = Address(ReadInt(m_Shared));
+
+	return ReadInt(Transpose(aHealers, (index * 0x24))) & 0xFFF;
 }
 
 stock float[] GetAbsVelocity(int client)

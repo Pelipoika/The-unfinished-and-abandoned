@@ -609,6 +609,10 @@ float[] SelectBestTargetPos(int client, const float oldAngles[3], int &iBestEnem
 				if(iHealerIndex > MaxClients)
 					continue;
 				
+				//Not ubered and stuff
+				if(!IsKilllablePlayer(client, iHealerIndex))
+					continue;
+				
 				if(!GetBestHitBox(client, iHealerIndex, vVisiblePos))
 					continue;
 				

@@ -384,7 +384,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			int nOldButtons = GetEntProp(client, Prop_Data, "m_nOldButtons");
 			SetEntProp(client, Prop_Data, "m_nOldButtons", (nOldButtons &= ~(IN_JUMP|IN_DUCK)));
 		}
-	}	
+	}
 	
 	if(g_iAntiAimType[client] != 0)
 	{
@@ -613,6 +613,7 @@ float[] SelectBestTargetPos(int client, const float oldAngles[3], int &iBestEnem
 				if(!IsKilllablePlayer(client, iHealerIndex))
 					continue;
 				
+				//Visibile anywhere?
 				if(!GetBestHitBox(client, iHealerIndex, vVisiblePos))
 					continue;
 				
@@ -631,7 +632,6 @@ float[] SelectBestTargetPos(int client, const float oldAngles[3], int &iBestEnem
 			if(!GetBestHitBox(client, i, vVisiblePos))
 				continue;
 		}
-	
 		
 		if(g_iAimType[client] == AIM_FOV)
 		{

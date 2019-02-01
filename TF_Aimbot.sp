@@ -1010,25 +1010,10 @@ stock bool GetBestHitBox(int client, int entity, float vBestOut[3])
 
 stock void FixSilentAimMovement(int client, const float vOldAngles[3],    float vViewAngles[3], float &flForwardMove, float &flSideMove,      float fOldForward, float fOldSidemove)
 {
-	float deltaView;
-	float f1;
-	float f2;
+	float f1 = (vOldAngles[1]  < 0.0) ? (360.0 + vOldAngles[1])  : (vOldAngles[1]);
+	float f2 = (vViewAngles[1] < 0.0) ? (360.0 + vViewAngles[1]) : (vViewAngles[1]);
 	
-	if (vOldAngles[1] < 0.0)
-		f1 = 360.0 + vOldAngles[1];
-	else
-		f1 = vOldAngles[1];
-	
-	if (vViewAngles[1] < 0.0)
-		f2 = 360.0 + vViewAngles[1];
-	else
-		f2 = vViewAngles[1];
-	
-	if (f2 < f1)
-		deltaView = FloatAbs(f2 - f1);
-	else
-		deltaView = 360.0 - FloatAbs(f1 - f2);
-		
+	float deltaView = (f2 < f1) ? (FloatAbs(f2 - f1)) : (360.0 - FloatAbs(f1 - f2));
 	deltaView = 360.0 - deltaView;
 	
 	flForwardMove = Cosine(DegToRad(deltaView)) * fOldForward + Cosine(DegToRad(deltaView + 90.0)) * fOldSidemove;

@@ -21,6 +21,15 @@ public void OnPluginStart()
 	RegAdminCmd("sm_rainbowme", Command_Rainbow, ADMFLAG_ROOT);
 	
 	g_hRainbowCycleRate = CreateConVar("sm_rainbow_cycle_rate", "1.0", "Constrols the speed of which the rainbow glow changes color");
+	
+	for(int client = 1; client <= MaxClients; client++)
+		if(IsClientInGame(client))
+			OnClientPutInServer(client);
+}
+
+public void OnClientPutInServer(int client)
+{
+	g_iPlayerGlowEntity[client] = INVALID_ENT_REFERENCE;
 }
 
 public void OnPluginEnd()

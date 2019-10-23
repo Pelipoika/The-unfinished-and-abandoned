@@ -15,23 +15,23 @@ Handle g_hHudInfo;
 #define NUM_ENT_ENTRIES			(1 << NUM_ENT_ENTRY_BITS)
 #define ENT_ENTRY_MASK			(NUM_ENT_ENTRIES - 1)
 
-bool g_bShowConditions[MAXPLAYERS+1];
+bool g_bShowConditions[MAXPLAYERS + 1];
 
 ArrayList aConditions;
 
 public Plugin myinfo = 
 {
-	name = "[TF2] Condition List",
-	author = "Pelipoika",
-	description = "",
-	version = "1.0",
+	name = "[TF2] Condition List", 
+	author = "Pelipoika", 
+	description = "", 
+	version = "1.0", 
 	url = "http://www.sourcemod.net/plugins.php?author=Pelipoika&search=1"
 };
 
 public void OnPluginStart()
 {
 	int offset = FindSendPropInfo("CTFPlayer", "m_Shared");
-	if (offset == -1) SetFailState("Cannot find m_Shared on CTFPlayer.");
+	if (offset == -1)SetFailState("Cannot find m_Shared on CTFPlayer.");
 	g_iCondSourceOffs = offset + COND_SOURCE_OFFS;
 	
 	g_hHudInfo = CreateHudSynchronizer();
@@ -167,6 +167,7 @@ public void OnPluginStart()
 	aConditions.PushString("ROCKETPACK");
 	aConditions.PushString("LOST_FOOTING");
 	aConditions.PushString("AIR_CURRENT");
+	aConditions.PushString("HALLOWEEN_HELL_HEAL");
 	//Phew
 }
 
@@ -177,7 +178,7 @@ public void OnClientPutInServer(int client)
 
 public Action Command_CondList(int client, int args)
 {
-	if(g_bShowConditions[client])
+	if (g_bShowConditions[client])
 	{
 		g_bShowConditions[client] = false;
 		PrintToChat(client, "[ConditionList] Off");
@@ -187,20 +188,20 @@ public Action Command_CondList(int client, int args)
 		g_bShowConditions[client] = true;
 		PrintToChat(client, "[ConditionList] On");
 	}
-
+	
 	return Plugin_Handled;
 }
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
-	if(IsFakeClient(client) || !g_bShowConditions[client])
+	if (IsFakeClient(client) || !g_bShowConditions[client])
 		return Plugin_Continue;
-		
+	
 	char strConds[2000];
 	SetHudTextParams(0.0, 0.3, 0.1, 255, 255, 0, 0, 0, 0.0, 0.0, 0.0);
 	
 	int iObserved = GetEntPropEnt(client, Prop_Send, "m_hObserverTarget");
-	if(iObserved > 0 && iObserved <= MaxClients && IsClientInGame(iObserved) && TF2_GetClientTeam(client) == TFTeam_Spectator)
+	if (iObserved > 0 && iObserved <= MaxClients && IsClientInGame(iObserved) && TF2_GetClientTeam(client) == TFTeam_Spectator)
 		Format(strConds, sizeof(strConds), "Conditions on %N\n", iObserved);
 	else
 		iObserved = client;
@@ -220,14 +221,14 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		//(m_Shared + 2) + 20 * condnum + 8;
 		
 		char condStr[PLATFORM_MAX_PATH];
-		if(cond < aConditions.Length)
+		if (cond < aConditions.Length)
 		{
 			aConditions.GetString(cond, condStr, PLATFORM_MAX_PATH);
 		}
 		
 		Format(strConds, sizeof(strConds), "%s %s (#%d) %.2f", strConds, condStr, cond, value);
 		
-		if(provider > 0 && provider <= MaxClients)
+		if (provider > 0 && provider <= MaxClients)
 			Format(strConds, sizeof(strConds), "%s | PROVIDER %N", strConds, provider);
 		
 		Format(strConds, sizeof(strConds), "%s\n", strConds);

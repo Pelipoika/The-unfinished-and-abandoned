@@ -93,8 +93,8 @@ public void OnPluginStart()
 	SetCommandFlags("ent_create", flags & ~FCVAR_CHEAT);
 	RegConsoleCmd("ent_create", Command_JumpToWave);*/
 	
-	HookEvent("player_death", Event_Death);
-	HookEvent("mvm_tank_destroyed_by_players", Event_Notable);
+	//HookEvent("player_death", Event_Death);
+	//HookEvent("mvm_tank_destroyed_by_players", Event_Notable);
 	
 	RegAdminCmd("sm_slowmo", Command_ToggleSlowmo, ADMFLAG_ROOT);
 }
@@ -129,7 +129,7 @@ public Action Command_ToggleSlowmo(int client, int args)
 
 public Action OnCheatCommand(int client, const char[] command, int argc)
 {
-	if(client <= 0)
+	if(client <= 1)
 		return Plugin_Continue;
 		
 	//Allow admins to cheat

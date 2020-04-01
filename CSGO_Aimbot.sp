@@ -16,12 +16,18 @@ bool g_bRecoilControl[MAXPLAYERS + 1];
 bool g_bESP[MAXPLAYERS + 1];
 bool g_bSnapLines[MAXPLAYERS + 1];
 
+
+bool g_bShowFake[MAXPLAYERS + 1];
+int g_iFakeRef[MAXPLAYERS + 1];
+int g_iAntiAimType[MAXPLAYERS + 1];
+
+
 #define UMSG_SPAM_DELAY 0.1
 float g_flNextTime[MAXPLAYERS + 1];
 
 public Plugin myinfo = 
 {
-	name = "[TF2] Aimbot",
+	name = "[CSGO] Aimbot",
 	author = "Pelipoika",
 	description = "",
 	version = "1.0",
@@ -31,9 +37,20 @@ public Plugin myinfo =
 Handle g_hLookupBone;
 Handle g_hGetBonePosition;
 
+
+#define NUM_LAYERS 12
+#define EF_BONEMERGE       (1 << 0)
+#define EF_PARENT_ANIMATES (1 << 9)
+
+const int CAnimationLayer_Size = 0x5C;
+
+Handle g_hResetSequence;
+Handle g_hStudioFrameAdvance;
+Handle g_hAllocateLayer;
+
 public void OnPluginStart()
 {
-	RegAdminCmd("sm_hacks", Command_Trigger, ADMFLAG_BAN);
+	RegAdminCmd("sm_hacks", Command_Trigger, 0);
 
 	for (int i = 1; i <= MaxClients; i++)
 	{	
@@ -64,6 +81,41 @@ public void OnPluginStart()
 	PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_ByRef, _, VENCODE_FLAG_COPYBACK);
 	PrepSDKCall_AddParameter(SDKType_QAngle, SDKPass_ByRef, _, VENCODE_FLAG_COPYBACK);
 	if ((g_hGetBonePosition = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for CBaseAnimating::GetBonePosition signature!");
+	
+	
+	
+	//ResetSequence(int nSequence);
+	StartPrepSDKCall(SDKCall_Entity);
+	PrepSDKCall_SetSignature(SDKLibrary_Server, "\x55\x8B\xEC\xA1\x2A\x2A\x2A\x2A\x83\xEC\x08\x53\x56\x8B\xD9", 15);
+	PrepSDKCall_AddParameter(SDKType_PlainOldData, SDKPass_Plain);
+	if ((g_hResetSequence = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for CBaseAnimating::ResetSequence signature!"); 
+
+	//int CBaseAnimatingOverlay::AllocateLayer( int iPriority )
+	StartPrepSDKCall(SDKCall_Entity);
+	PrepSDKCall_SetSignature(SDKLibrary_Server, "\x55\x8B\xEC\x83\xEC\x14\x53\x8B\xC1", 9);
+	PrepSDKCall_AddParameter(SDKType_PlainOldData, SDKPass_Plain);	//priority
+	PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain); //return iOpenLayer
+	if((g_hAllocateLayer = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create Call for CBaseAnimatingOverlay::AllocateLayer");
+	
+	// StudioFrameAdvance - advance the animation frame up some interval (default 0.1) into the future
+	StartPrepSDKCall(SDKCall_Entity);
+	PrepSDKCall_SetSignature(SDKLibrary_Server, "\x55\x8B\xEC\x83\xE4\xC0\xA1\x2A\x2A\x2A\x2A\x83\xEC\x34\xF3\x0F\x10\x48\x10", 19);
+	if ((g_hStudioFrameAdvance = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for CBaseAnimating::StudioFrameAdvance signature!");
+	
+	
+}
+
+//Remove all clones
+public void OnPluginEnd()
+{
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		int iClone = EntRefToEntIndex(g_iFakeRef[i]);
+		if(IsValidEntity(iClone))
+		{
+			//AcceptEntityInput(iClone, "Kill");
+		}
+	}
 }
 
 public void OnClientPutInServer(int client)
@@ -73,7 +125,11 @@ public void OnClientPutInServer(int client)
 	g_bSilentAim[client] = false;
 	g_bRecoilControl[client] = false;
 	
-	g_bESP[client] = true;
+	g_bESP[client] = false;
+	
+	g_bShowFake[client] = false;
+	g_iFakeRef[client] = INVALID_ENT_REFERENCE;
+	g_iAntiAimType[client] = 0;
 	
 	g_bBunnyHop[client] = false;
 	g_bHeadshots[client] = false;
@@ -97,6 +153,7 @@ stock void DisplayHackMenuAtItem(int client, int page = 0)
 	menu.SetTitle("LMAOBOX CS:GO");
 	menu.AddItem("0", "Aimbot");
 	menu.AddItem("1", "Misc");
+	menu.AddItem("2", "Confused Boyes");
 
 	menu.ExitButton = true;
 	menu.DisplayAt(client, page, MENU_TIME_FOREVER);
@@ -148,19 +205,169 @@ stock void DisplayMiscMenuAtItem(int client, int page = 0)
 		menu.AddItem("0", "Bunny Hop: Off");
 		
 	if(g_bESP[client])
-		menu.AddItem("1", "ESP: On");
+		menu.AddItem("1", "ESP: On", (client > 1) ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
 	else
-		menu.AddItem("1", "ESP: Off");
+		menu.AddItem("1", "ESP: Off", (client > 1) ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
 		
 	if(g_bSnapLines[client])
-		menu.AddItem("2", "ESP Snap Lines: On");
+		menu.AddItem("2", "ESP Snap Lines: On", (client > 1) ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
 	else
-		menu.AddItem("2", "ESP Snap Lines: Off");	
+		menu.AddItem("2", "ESP Snap Lines: Off", (client > 1) ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
+	
+	if(g_bShowFake[client])
+		menu.AddItem("3", "Show Fake Angles: On");
+	else
+		menu.AddItem("3", "Show Fake Angles: Off");	
 		
 	menu.ExitButton = true;
 	menu.ExitBackButton = true;
 	menu.DisplayAt(client, page, MENU_TIME_FOREVER);
 }
+
+stock void DisplaySpinbotMenuAtItem(int client, int page = 0)
+{
+	Menu menu = new Menu(MenuSpinHandler);
+	menu.SetTitle("Spinbot - Settings");
+	
+	switch(g_iAntiAimType[client])
+	{
+		case 0: menu.AddItem("0", "Type: OFF");
+		case 1: menu.AddItem("1", "Type: Scared");
+	}
+	
+	DrawServerHitboxes(client);
+	
+	menu.ExitButton = true;
+	menu.ExitBackButton = true;
+	menu.DisplayAt(client, page, MENU_TIME_FOREVER);
+}
+
+
+/*
+	Signature for CBaseAnimating__DrawServerHitboxes:
+	55 8B EC 81 EC A0 00 00 00 53 
+	\x55\x8B\xEC\x81\xEC\xA0\x00\x00\x00\x53
+*/
+
+#define Pointer Address
+#define nullptr Address_Null
+
+#define Address(%1) view_as<Address>(%1)
+#define int(%1) view_as<int>(%1)
+
+float hullcolor[][] = 
+{
+	{1.0, 1.0, 1.0},
+	{1.0, 0.5, 0.5},
+	{0.5, 1.0, 0.5},
+	{1.0, 1.0, 0.5},
+	{0.5, 0.5, 1.0},
+	{1.0, 0.5, 1.0},
+	{0.5, 1.0, 1.0},
+	{1.0, 1.0, 1.0}
+};
+
+void DrawServerHitboxes(int entity)
+{
+	Address pStudioHdr = view_as<Address>(GetEntData(entity, 295 * 4));	//1180
+	if(pStudioHdr == Address_Null)
+		return;
+	
+	pStudioHdr = Address(Dereference(pStudioHdr));
+	
+	int iHitboxSetIndex = ReadInt(pStudioHdr + Address(0xB0) );
+	Address pStudioHitboxSet = pStudioHdr + Address(iHitboxSetIndex);
+	if(pStudioHitboxSet == Address_Null)
+		return;
+	
+	int iNumHitboxes = ReadInt( pStudioHitboxSet + Address(0x4) );
+	int iHitboxIdx   = ReadInt( pStudioHitboxSet + Address(0x8) );
+	
+	PrintToServer("pStudioHdr 0x%x | iHitboxSetIndex %i | pStudioHitboxSet 0x%X", pStudioHdr, iHitboxSetIndex, pStudioHitboxSet);
+	PrintToServer("iNumHitboxes %i | iHitboxIdx %i", iNumHitboxes, iHitboxIdx);
+	
+	pStudioHitboxSet += Address(0xC);
+
+	PrintToServer("BoneMatrix 0x%X", GetEntityAddress(entity));
+
+	//PrintToServer("%3s %-10s %12s %13s\n", "#", "X", "Y", "Z");
+
+	for ( int i = 0; i < iNumHitboxes; i++ )
+	{
+		float position[3], angles[3];
+		float vMins[3], vMaxs[3];
+		
+		//mstudiobbox_t 
+		Pointer pbox = Address(pStudioHitboxSet + Address(i * 68));
+		
+		int iBone = ReadInt(pbox);
+		
+		PrintToServer("pbox 0x%X", pbox);
+		
+		GetBonePosition(entity, iBone, position, angles);
+		
+		vMins[0] = view_as<float>(ReadInt(pbox + Address(0x8)));
+		vMins[1] = view_as<float>(ReadInt(pbox + Address(0xC)));
+		vMins[2] = view_as<float>(ReadInt(pbox + Address(0x10)));
+		
+		vMaxs[0] = view_as<float>(ReadInt(pbox + Address(0x14)));
+		vMaxs[1] = view_as<float>(ReadInt(pbox + Address(0x18)));
+		vMaxs[2] = view_as<float>(ReadInt(pbox + Address(0x1C)));
+		
+		PrintToServer("%-3d %-6.1f %-6.1f %-6.1f  %-6.1f %-6.1f %-6.1f", iBone, position[0], position[1], position[2], angles[0], angles[1], angles[2]);
+		PrintToServer("%-3s %-6.1f %-6.1f %-6.1f  %-6.1f %-6.1f %-6.1f", "", vMins[0], vMins[1], vMins[2], vMaxs[0], vMaxs[1], vMaxs[2]);
+		
+		int j = (ReadInt(pbox + Address(0x4)) % 8);
+		
+		int r = RoundToFloor( 255.0 * hullcolor[j][0] );
+		int g = RoundToFloor( 255.0 * hullcolor[j][1] );
+		int b = RoundToFloor( 255.0 * hullcolor[j][2] );
+		
+		float flRadius = view_as<float>(ReadInt(pbox + Address(0x30)));
+		if(flRadius == -1.0)
+		{
+			//Box style hitbox
+		}
+		else
+		{
+			//New capsule style hitbox
+		}
+		
+		PrintToServer("%-10s %-6.1f", "m_flRadius", flRadius);
+		
+		VSF.DebugDrawBox(position, vMaxs, vMins, r, g, b, 155, 5.0);
+	}
+}
+
+stock Pointer Transpose(Pointer pAddr, int iOffset)		
+{
+	return Address(int(pAddr) + iOffset);		
+}
+stock int Dereference(Pointer pAddr, int iOffset = 0)		
+{
+	if(pAddr == nullptr)		
+	{
+		return -1;
+	}
+	
+	return ReadInt(Transpose(pAddr, iOffset));
+} 
+stock int ReadInt(Pointer pAddr)
+{
+	if(pAddr == nullptr)
+	{
+		return -1;
+	}
+	
+	return LoadFromAddress(pAddr, NumberType_Int32);
+}
+
+
+
+
+
+
+
 
 public int MenuAimbotHandler(Menu menu, MenuAction action, int param1, int param2)
 {
@@ -213,6 +420,19 @@ public int MenuMiscHandler(Menu menu, MenuAction action, int param1, int param2)
 			case 0: g_bBunnyHop[param1]  = !g_bBunnyHop[param1];
 			case 1: g_bESP[param1]       = !g_bESP[param1];
 			case 2: g_bSnapLines[param1] = !g_bSnapLines[param1];
+			case 3: 
+			{
+				g_bShowFake[param1] = !g_bShowFake[param1];
+				
+				if(g_bShowFake[param1])
+				{
+					CreateClone(param1);
+				}
+				else
+				{
+					DeleteClone(param1);
+				}
+			}
 		}
 		
 		DisplayMiscMenuAtItem(param1, GetMenuSelectionPosition());
@@ -227,6 +447,246 @@ public int MenuMiscHandler(Menu menu, MenuAction action, int param1, int param2)
 	}
 }
 
+public int MenuSpinHandler(Menu menu, MenuAction action, int param1, int param2)
+{
+	if (action == MenuAction_Select)
+	{
+		if(++g_iAntiAimType[param1] >= 2)
+			g_iAntiAimType[param1] = 0;
+		
+		DisplaySpinbotMenuAtItem(param1, GetMenuSelectionPosition());
+	}
+	else if(param2 == MenuCancel_ExitBack)
+	{
+		DisplayHackMenuAtItem(param1);
+	}
+	else if(action == MenuAction_End)
+	{
+		delete menu;
+	}
+}
+
+stock void CreateClone(int client)
+{
+	char strModel[PLATFORM_MAX_PATH];
+	GetEntPropString(client, Prop_Data, "m_ModelName", strModel, PLATFORM_MAX_PATH);
+	
+	int ent = CreateEntityByName("monster_generic");
+	DispatchKeyValueVector(ent, "origin", GetAbsOrigin(client));
+	DispatchKeyValueVector(ent, "angles", GetAbsAngles(client));
+	DispatchKeyValue(ent, "model", strModel);
+	DispatchKeyValue(ent, "spawnflags", "5000");
+	DispatchSpawn(ent);
+	
+	SetEntProp(ent, Prop_Send, "m_nSkin", GetEntProp(client, Prop_Send, "m_nSkin"));
+	SetEntPropEnt(ent, Prop_Data, "m_hOwnerEntity", client);
+	
+	////////////////////////////
+	//Copy weapon
+	//Not nescessary
+	////////////////////////////
+	int table = FindStringTable("modelprecache");
+	ReadStringTable(table, GetEntProp(GetActiveWeapon(client), Prop_Send, "m_iWorldModelIndex"), strModel, PLATFORM_MAX_PATH);  
+	
+	if(!StrEqual(strModel, ""))
+	{	
+		int item = CreateEntityByName("prop_dynamic");
+		DispatchKeyValue(item, "model", strModel);
+		DispatchSpawn(item);
+		
+		SetEntProp(item, Prop_Send, "m_nSkin", GetEntProp(client, Prop_Send, "m_nSkin"));
+		SetEntProp(item, Prop_Send, "m_hOwnerEntity", ent);
+		SetEntProp(item, Prop_Send, "m_fEffects", EF_BONEMERGE|EF_PARENT_ANIMATES);
+		
+		SetEntPropEnt(ent, Prop_Data, "m_hEffectEntity", item);
+		
+		SetVariantString("!activator");
+		AcceptEntityInput(item, "SetParent", ent);
+		
+		SetVariantString("weapon_hand_r");
+		AcceptEntityInput(item, "SetParentAttachmentMaintainOffset"); 
+	}
+	////////////////////////////
+	
+	g_iFakeRef[client] = EntIndexToEntRef(ent);
+	
+	RequestFrame(Clone_SetupLayers, ent);
+	RequestFrame(Clone_SetupAnimations, ent);
+	
+	SDKHook(client, SDKHook_PostThinkPost, OnClientThink);
+	SDKHook(client, SDKHook_WeaponSwitchPost, OnClientWeaponSwitch);
+	
+	SetEntProp(client, Prop_Send, "m_fEffects", 32);
+	SetEntityRenderMode(client, RENDER_TRANSCOLOR);
+	SetEntityRenderColor(client, .a = 0);
+	
+	for (int i = 0; i < GetEntPropArraySize(client, Prop_Send, "m_hMyWeapons"); i++)
+	{
+		int weapon = GetEntPropEnt(client, Prop_Send, "m_hMyWeapons", i);
+		if (weapon == INVALID_ENT_REFERENCE)
+			continue;
+		
+		weapon = GetEntPropEnt(weapon, Prop_Send, "m_hWeaponWorldModel");
+		if (weapon == INVALID_ENT_REFERENCE)
+			continue;
+		
+		SDKHook(weapon, SDKHook_SetTransmit, BlockTransmit);
+	}
+}
+
+stock void DeleteClone(int client)
+{
+	SDKUnhook(client, SDKHook_PostThinkPost, OnClientThink);
+	SDKUnhook(client, SDKHook_WeaponSwitchPost, OnClientWeaponSwitch);
+	
+	SetEntProp(client, Prop_Send, "m_fEffects", 0);
+	SetEntityRenderMode(client, RENDER_NORMAL);
+	SetEntityRenderColor(client, .a = 255);
+	
+	int iClone = EntRefToEntIndex(g_iFakeRef[client]);
+	if(IsValidEntity(iClone))
+	{
+		AcceptEntityInput(iClone, "Kill");
+	}
+	
+	for (int i = 0; i < GetEntPropArraySize(client, Prop_Send, "m_hMyWeapons"); i++)
+	{
+		int weapon = GetEntPropEnt(client, Prop_Send, "m_hMyWeapons", i);
+		if (weapon == INVALID_ENT_REFERENCE)
+			continue;
+		
+		weapon = GetEntPropEnt(weapon, Prop_Send, "m_hWeaponWorldModel");
+		if (weapon == INVALID_ENT_REFERENCE)
+			continue;
+		
+		SDKUnhook(weapon, SDKHook_SetTransmit, BlockTransmit);
+	}
+}
+
+public void OnClientWeaponSwitch(int client, int weapon)
+{
+	int iClone = EntRefToEntIndex(g_iFakeRef[client]);
+	if(iClone == INVALID_ENT_REFERENCE)
+		return;
+
+	//Hide any new weapons that might come up.
+	int weaponWorld = GetEntPropEnt(weapon, Prop_Send, "m_hWeaponWorldModel");
+	if (weaponWorld != INVALID_ENT_REFERENCE)
+	{
+		//Can't doublehook so it's fine.
+		SDKHook(weaponWorld, SDKHook_SetTransmit, BlockTransmit);
+	}
+
+	//Update player clones weapon.
+	int table = FindStringTable("modelprecache");
+	
+	char strModel[PLATFORM_MAX_PATH];
+	ReadStringTable(table, GetEntProp(weapon, Prop_Send, "m_iWorldModelIndex"), strModel, PLATFORM_MAX_PATH);  
+	
+	if(StrEqual(strModel, ""))
+		return;
+
+	int item = GetEntPropEnt(iClone, Prop_Data, "m_hEffectEntity");
+	if(item == INVALID_ENT_REFERENCE)
+		return;
+	
+	SetEntityModel(item, strModel);
+	
+	//SetEntProp(item, Prop_Send, "m_nSkin",       GetEntProp(weapon, Prop_Send, "m_nSkin"));
+	//SetEntProp(item, Prop_Send, "m_nModelIndex", GetEntProp(weapon, Prop_Send, "m_nModelIndex"));
+}
+
+public void OnClientThink(int client)
+{
+	SetEntProp(client, Prop_Send, "m_iAddonBits", 0);
+
+	int iClone = EntRefToEntIndex(g_iFakeRef[client]);
+	if(iClone == INVALID_ENT_REFERENCE)
+		return;
+	
+	DispatchKeyValueVector(iClone, "origin", GetAbsOrigin(client));
+	DispatchKeyValueVector(iClone, "angles", GetAbsAngles(client));
+	
+	//TeleportEntity(iClone, GetAbsOrigin(client), GetAbsAngles(client), NULL_VECTOR);	
+	
+	Clone_SetupAnimations(iClone);
+}
+
+public Action BlockTransmit(int entity, int client)
+{
+	return Plugin_Handled;
+}
+
+methodmap CBaseAnimating
+{
+	public CBaseAnimating(int entity) {
+		return view_as<CBaseAnimating>(entity);
+	}
+	
+	property int index {
+		public get() { 
+			return view_as<int>(this); 
+		}
+	}
+	public Address CBaseAnimatingOverlay() {
+		int iOffset = (view_as<int>(GetEntityAddress(this.index)) + FindDataMapInfo(this.index, "m_AnimOverlay"));
+		return view_as<Address>(LoadFromAddress(view_as<Address>(iOffset), NumberType_Int32));
+	}
+}
+
+public void Clone_SetupLayers(int iEntity)
+{
+	//Allocate n layers for max copycat
+	for (int i = 0; i <= NUM_LAYERS; i++)
+		SDKCall(g_hAllocateLayer, iEntity, 0);
+}
+
+public void Clone_SetupAnimations(int iEntity)
+{
+	int client = GetEntPropEnt(iEntity, Prop_Data, "m_hOwnerEntity");
+	if(client <= 0)
+		return;
+
+	SDKCall(g_hResetSequence, iEntity, GetEntProp(client, Prop_Send, "m_nSequence"));
+	
+	Address overlayP = CBaseAnimating(client).CBaseAnimatingOverlay();
+	Address overlay = CBaseAnimating(iEntity).CBaseAnimatingOverlay();
+	
+	//The magic maker
+	for (int i = 0; i <= NUM_LAYERS; i++)
+	{
+		Address layerP = (overlayP + view_as<Address>(i * CAnimationLayer_Size));
+		Address layer  = (overlay  + view_as<Address>(i * CAnimationLayer_Size));
+		
+		//Copy all teh fun bytes :)))))))))))))))))))))))
+		for (int x = 0; x < (CAnimationLayer_Size / 4); x++)
+		{
+			if(x == 4)
+			{
+				//Playback rate to 0
+				StoreToAddress(layer + view_as<Address>(x * 4), 0, NumberType_Int32);
+			}
+			else
+			{
+				any iData = LoadFromAddress(layerP + view_as<Address>(x * 4), NumberType_Int32);
+				
+				//PrintToServer("%i 0x%X - %i %i from 0x%X", i, layer, x, iData, layerP);
+				StoreToAddress(layer + view_as<Address>(x * 4), iData, NumberType_Int32);
+			}
+		}
+	}
+	
+	for (int i = 0; i < 24; i++)
+	{
+		float flValue = GetEntPropFloat(client, Prop_Send, "m_flPoseParameter", i);
+		SetEntPropFloat(iEntity, Prop_Send, "m_flPoseParameter", flValue, i);
+	}
+	
+	//Play anims a bit so they get played to their set values
+	SDKCall(g_hStudioFrameAdvance, iEntity);
+}
+
+
 public int MenuLegitnessHandler(Menu menu, MenuAction action, int param1, int param2)
 {
 	if (action == MenuAction_Select)
@@ -235,6 +695,7 @@ public int MenuLegitnessHandler(Menu menu, MenuAction action, int param1, int pa
 		{
 			case 0: DisplayAimbotMenuAtItem(param1);
 			case 1: DisplayMiscMenuAtItem(param1);
+			case 2: DisplaySpinbotMenuAtItem(param1);
 		}
 	}
 	else if(action == MenuAction_End)
@@ -245,10 +706,25 @@ public int MenuLegitnessHandler(Menu menu, MenuAction action, int param1, int pa
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
-	if(IsFakeClient(client) || !IsPlayerAlive(client)) 
+	if(IsFakeClient(client)) 
 		return Plugin_Continue;	
 	
+	if(!IsPlayerAlive(client))
+	{
+		if(g_bShowFake[client] && EntRefToEntIndex(g_iFakeRef[client]) != INVALID_ENT_REFERENCE)
+		{
+			//Remove clone while we are dead.
+			DeleteClone(client);
+		}
+		
+		return Plugin_Continue;	
+	}
+	
 	bool bChanged = false;
+	
+	float oldAngle[3]; oldAngle = angles;
+	float oldForward  = vel[0];
+	float oldSideMove = vel[1];
 	
 	if(g_bBunnyHop[client])
 	{
@@ -289,6 +765,26 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		}
 	}
 	
+	if(g_iAntiAimType[client] != 0 && !(buttons & IN_USE))
+	{
+		bool bFoundWall = DoAntiAim(client, angles[1]);
+		
+		angles[0] = 36000088.0;
+		
+		//Backwards if no wall
+		if (!bFoundWall)
+		{
+			angles[1] -= 180.0;
+		}
+		
+		FixSilentAimMovement(client, oldAngle, angles, vel[0], vel[1], oldForward, oldSideMove);
+	}
+	
+	if(g_bShowFake[client] && EntRefToEntIndex(g_iFakeRef[client]) == INVALID_ENT_REFERENCE)
+	{
+		CreateClone(client);
+	}
+	
 	if(g_bAimbot[client])
 	{
 		SetEntProp(client, Prop_Data, "m_bLagCompensation", false);
@@ -309,14 +805,11 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		if (target_point[2] == 0 || iTarget == -1)
 			return Plugin_Continue;
 		
-		if(g_bAutoShoot[client])
+		if(g_bAutoShoot[client] && (!(buttons & IN_ATTACK)))
 		{
-			if(IsPlayerReloading(client))
-			{
+			if(IsPlayerReloading(client)) {
 				buttons &= ~IN_ATTACK;
-			}
-			else
-			{
+			} else {
 				buttons |= IN_ATTACK;
 			}
 		}
@@ -338,14 +831,15 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		
 		AddVectors(eye_to_target, vPunch, eye_to_target);
 		
+		angles = eye_to_target;
+		
 		if(!g_bSilentAim[client]) {
 			TeleportEntity(client, NULL_VECTOR, eye_to_target, NULL_VECTOR);
 		}
 		else {
-			FixSilentAimMovement(client, vel, angles, eye_to_target);
+			FixSilentAimMovement(client, oldAngle, angles, vel[0], vel[1], oldForward, oldSideMove);
 		}
 		
-		angles = eye_to_target;
 		bChanged = true;
 		
 		SetEntPropFloat(iAw, Prop_Send, "m_fAccuracyPenalty", 0.0);
@@ -353,6 +847,51 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	}
 	
 	return bChanged ? Plugin_Changed : Plugin_Continue;
+}
+
+stock bool DoAntiAim(int client, float &angle)
+{
+	float position[3]; position = GetEyePosition(client); 
+	
+	float closest_distance = 100.0;
+	
+	//float radius = 25.3;
+	float radius = 40.0;
+	float step = FLOAT_PI * 2.0 / 16;
+	
+	for (float a = 0.0; a < (FLOAT_PI * 2.0); a += step)
+	{
+		float location[3];
+		location[0] = radius * Cosine(a) + position[0];
+		location[1] = radius * Sine(a)   + position[1];
+		location[2] = position[2];
+		
+		Handle trace = TR_TraceRayFilterEx(position, location, CONTENTS_SOLID, RayType_EndPoint, AimTargetFilter, client);
+		
+		if (TR_DidHit(trace))
+		{
+			float posEnd[3];
+			TR_GetEndPosition(posEnd, trace);
+				
+			//VSF.DebugDrawLine(position, posEnd, 0, 255, 0, true, 0.05);
+			
+			float distance = GetVectorDistance(position, posEnd);
+			
+			if (distance < closest_distance)
+			{
+				closest_distance = distance;
+				angle = RadToDeg(a);
+			}
+		}
+		else
+		{
+			//VSF.DebugDrawLine(position, location, 255, 0, 0, true, 0.05);
+		}
+		
+		delete trace;
+	}
+ 
+	return closest_distance < 25.0;
 }
 
 float[] VelocityExtrapolate(int client, float eyepos[3])
@@ -400,6 +939,9 @@ float[] SelectBestTargetPos(int client, const float realAngles[3], int &iBestEne
 		float vecHead[3], vecBad[3];
 		GetBonePosition(i, iBone, vecHead, vecBad);
 		
+		//Give this man a raise!
+		vecHead[2] += 4.0;
+		
 		if(!IsPointVisible(client, i, GetEyePosition(client), vecHead))
 		{
 			if(g_bHeadshots[client])
@@ -439,39 +981,6 @@ float[] SelectBestTargetPos(int client, const float realAngles[3], int &iBestEne
 	
 	return flTargetPos;
 }
-
-stock void VisualizeBones(int entity)
-{
-	for (int b = 0; b < 80; b++)
-	{
-		float vecHead[3], vecBad[3];
-		GetBonePosition(entity, b, vecHead, vecBad);
-		
-		char bone[8];
-		Format(bone, sizeof(bone), "%i", b);
-		
-		Point_WorldText(vecHead, NULL_VECTOR, bone, "1.5", 255, 0, 255);
-	}
-}
-
-stock int Point_WorldText(float fPos[3], float fAngles[3], char[] sText, char[] sSize, int r, int g, int b) 
-{ 
-	int iEntity = CreateEntityByName("point_worldtext"); 
-	DispatchKeyValueVector(iEntity, "origin", fPos);
-	DispatchKeyValueVector(iEntity, "angles", fAngles);
-	DispatchKeyValue(iEntity, "message", sText); 
-	DispatchKeyValue(iEntity, "textsize", sSize); 
-	 
-	char sColor[11]; 
-	Format(sColor, sizeof(sColor), "%d %d %d", r, g, b); 
-	DispatchKeyValue(iEntity, "color", sColor); 
-	 
-	DispatchSpawn(iEntity);
-	 
-	TeleportEntity(iEntity, fPos, fAngles, NULL_VECTOR); 
-	 
-	return iEntity; 
-}  
 
 bool IsPlayerReloading(int client)
 {
@@ -697,18 +1206,34 @@ stock float[] GetDeltaVector(const int client, const int target)
 	return vec;
 }
 
-stock void FixSilentAimMovement(int client, float vel[3], float angles[3], float aimbotAngles[3])
+
+#define DEG2RAD(%1) ((%1) * FLOAT_PI / 180.0)
+
+stock void FixSilentAimMovement(int client, float vOldAngles[3],    float vViewAngles[3], float &flForwardMove, float &flSideMove,      float fOldForward, float fOldSidemove)
 {
-	float vecSilent[3];
-	vecSilent = vel;
+	float deltaView;
+	float f1;
+	float f2;
 	
-	float flSpeed = SquareRoot(vecSilent[0] * vecSilent[0] + vecSilent[1] * vecSilent[1]);
-	float angMove[3];
-	GetVectorAngles(vecSilent, angMove);
+	if (vOldAngles[1] < 0.0)
+		f1 = 360.0 + vOldAngles[1];
+	else
+		f1 = vOldAngles[1];
 	
-	float flYaw = DegToRad(aimbotAngles[1] - angles[1] + angMove[1]);
-	vel[0] = Cosine( flYaw ) * flSpeed;
-	vel[1] = Sine( flYaw ) * flSpeed;
+	if (vViewAngles[1] < 0.0)
+		f2 = 360.0 + vViewAngles[1];
+	else
+		f2 = vViewAngles[1];
+	
+	if (f2 < f1)
+		deltaView = FloatAbs(f2 - f1);
+	else
+		deltaView = 360.0 - FloatAbs(f1 - f2);
+		
+	deltaView = 360.0 - deltaView;
+	
+	flForwardMove = Cosine(DEG2RAD(deltaView)) * fOldForward + Cosine(DEG2RAD(deltaView + 90.0)) * fOldSidemove;
+	flSideMove    =   Sine(DEG2RAD(deltaView)) * fOldForward +   Sine(DEG2RAD(deltaView + 90.0)) * fOldSidemove;
 }
 
 stock bool IsPointVisible(int looker, int target, float start[3], float point[3])
@@ -778,6 +1303,14 @@ stock float[] GetAbsOrigin(int client)
 {
 	float v[3];
 	GetEntPropVector(client, Prop_Data, "m_vecAbsOrigin", v);
+	return v;
+}
+
+stock float[] GetAbsAngles(int client)
+{
+	float v[3];
+	GetEntPropVector(client, Prop_Data, "m_angAbsRotation", v);
+	
 	return v;
 }
 

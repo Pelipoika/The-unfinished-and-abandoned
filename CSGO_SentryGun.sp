@@ -1,13 +1,12 @@
 #pragma semicolon 1
 
-#define DEBUG
+//#define DEBUG
 
 #include <sourcemod>
 #include <sdktools>
 #include <sdkhooks>
 #include <cstrike>
 #include <emitsoundany>
-//#include <CBaseAnimatingOverlay>
 
 #pragma newdecls required
 
@@ -268,7 +267,7 @@ methodmap SentryGun
 		return GetEntProp(this.index, Prop_Send, "m_iTeamNum");
 	}
 	public Address GetStudioHdr() {
-		return view_as<Address>(GetEntData(this.index, view_as<int>(0x49C)));
+		return view_as<Address>(GetEntData(this.index, view_as<int>(1216)));
 	}
 	public Address CBaseAnimatingOverlay() {
 		int iOffset = (view_as<int>(GetEntityAddress(this.index)) + FindDataMapInfo(this.index, "m_AnimOverlay"));
@@ -290,6 +289,8 @@ methodmap SentryGun
 	}
 	public void GetAttachment(const char[] szName, float absOrigin[3], float absAngles[3])	{
 		SDKCall(g_hGetAttachment, this.index, szName, absOrigin, absAngles);
+		
+		//PrintToServer("GetAttachment %s - %f %f %f | %f %f %f", szName, absOrigin[0], absOrigin[1], absOrigin[2], absAngles[0], absAngles[1], absAngles[2]);
 	}
 	public int LookupSequence(const char[] anim) {
 		return SDKCall(g_hLookupSequence, this.index, anim);
@@ -311,9 +312,9 @@ methodmap SentryGun
 		
 		Address overlay = this.CBaseAnimatingOverlay();
 		
-	//	PrintToServer("Overlay count = %i %i", GetEntData(this.index, 1212) );
+		//PrintToServer("Overlay count = %i", GetEntData(this.index, 1248) );
 		
-		for (int i = 0; i < GetEntData(this.index, 1212); i++)
+		for (int i = 0; i < GetEntData(this.index, 1248); i++)
 		{
 			//Offset to a layers m_fFlags.
 			int fFlags = LoadFromAddress(overlay + view_as<Address>(m_fFlags * i), NumberType_Int32);
@@ -337,7 +338,7 @@ methodmap SentryGun
 			return;
 		
 		//1212 = m_AnimOverlay.Count(), if this offset ever breaks; repalce it with 15 because it doesn't really matter. All you will be doing is accessing unallocated memory :o
-		int iCount = GetEntData(this.index, 1212);
+		int iCount = GetEntData(this.index, 1248);
 		
 		int iLayer = SDKCall(g_hAddLayeredSequence, this.index, iSequence, 0);
 		if(iLayer >= 0 && iLayer <= iCount && bAutokill)
@@ -644,6 +645,7 @@ methodmap SentryGun
 			}
 	
 			this.SetPoseParameter(this.LookupPoseParameter("aim_pitch"), -50.0, 50.0, -m_vecCurAngles[0]);
+			//this.SetPoseParameter(0, -50.0, 50.0, -m_vecCurAngles[0]);
 			
 			bMoved = true;
 		}
@@ -728,6 +730,7 @@ methodmap SentryGun
 			float flYaw = AngleNormalize(m_vecCurAngles[1] - angles[1]);
 			
 			this.SetPoseParameter(this.LookupPoseParameter("aim_yaw"), -180.0, 180.0, -flYaw);
+			//this.SetPoseParameter(1, -180.0, 180.0, -flYaw);
 	
 			bMoved = true;
 		}
